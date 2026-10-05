@@ -108,37 +108,10 @@ export async function shopView() {
           ${packs.map((p) => packCard(p, { featured: p.badge === 'Populaire' || highlight === p.id })).join('')}
         </div>
 
-        <div class="card reveal" style="margin-top:44px">
-          <div class="row-between wrap">
-            <div>
-              <div class="card-title">Moyens de paiement acceptés</div>
-              <p class="muted small">Selon votre pays : ${esc(methods.join(' · ') || 'paiement sécurisé')}</p>
-            </div>
-            <span class="badge badge-paid">Aucune donnée bancaire stockée</span>
-          </div>
-          <div class="pay-marquee" style="margin-top:20px">
-            <div class="pay-track">
-              ${[...methods, ...methods].map((m) => `<span class="pay-chip">${esc(m)}</span>`).join('')}
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="section-sm">
-      <div class="container">
-        <div class="grid grid-3">
-          <div class="card card-hover reveal">
-            <div class="card-title">${icon('shield-check', { size: 19 })} Paiement hébergé</div>
-            <p class="muted small">La saisie se fait chez le prestataire (PayPal / Stripe). KALEA ne voit jamais votre numéro de carte.</p>
-          </div>
-          <div class="card card-hover reveal">
-            <div class="card-title">${icon('zap', { size: 19 })} Livraison automatique</div>
-            <p class="muted small">Webhook signé vérifié côté serveur → commande « Payée » → rôle Discord + récompenses envoyées au jeu.</p>
-          </div>
-          <div class="card card-hover reveal">
-            <div class="card-title">${icon('lock', { size: 19 })} Anti double attribution</div>
-            <p class="muted small">Chaque transaction porte un ID unique. Une même récompense ne peut être délivrée qu'une seule fois.</p>
+        <div class="pay-row center" style="margin-top:42px">
+          <span class="pay-label">${icon('shield-check', { size: 16 })} Paiement sécurisé</span>
+          <div class="pay-chips">
+            ${methods.map((m) => `<span class="pay-chip">${esc(m)}</span>`).join('') || '<span class="pay-chip">Paiement sécurisé</span>'}
           </div>
         </div>
       </div>
@@ -173,8 +146,7 @@ export async function packsView() {
         <div class="eyebrow">Catalogue complet</div>
         <h1 class="h2">Comparez les <span class="grad-text">packs</span></h1>
         <p class="lead" style="margin-top:14px">
-          Trois offres, un même principe : vous payez, le système délivre. Ajoutez un nouveau pack
-          depuis le dashboard admin, il apparaît ici automatiquement.
+          Trois offres, un même principe : vous payez, tout est livré automatiquement.
         </p>
       </div>
     </section>
@@ -219,7 +191,7 @@ export async function packsView() {
       <div class="container">
         <div class="grid grid-2">
           <div class="card reveal">
-            <div class="card-title">🎁 Contenu livré automatiquement</div>
+            <div class="card-title">${icon('gift', { size: 19 })} Contenu livré automatiquement</div>
             <ul class="pack-features" style="margin-top:12px">
               <li><span class="tick">✓</span><span>Rôle Discord associé au pack</span></li>
               <li><span class="tick">✓</span><span>Skins, objets et monnaie virtuelle</span></li>
@@ -228,13 +200,12 @@ export async function packsView() {
             </ul>
           </div>
           <div class="card reveal">
-            <div class="card-title">${icon('cube', { size: 19 })} Extensible</div>
+            <div class="card-title">${icon('help', { size: 19 })} Une question avant d'acheter ?</div>
             <p class="muted small" style="margin-top:10px">
-              Chaque pack est configurable sans toucher au code : prix, description, image,
-              rôle Discord, récompenses et fonctionnalités de jeu sont éditables depuis le
-              dashboard administrateur.
+              Paiement, livraison, remboursement ou rôle Discord : notre équipe répond
+              à toutes vos questions, généralement en quelques minutes.
             </p>
-            <a class="btn btn-ghost btn-sm" href="/admin/packs" data-link style="margin-top:16px">Ouvrir le dashboard</a>
+            <a class="btn btn-ghost btn-sm" href="/support" data-link style="margin-top:16px">Contacter le support</a>
           </div>
         </div>
       </div>

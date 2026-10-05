@@ -901,3 +901,55 @@ html[data-bg="mono"] .bg-fx::before {
   content: ""; position: absolute; inset: 0;
   background: linear-gradient(180deg, rgba(6, 6, 12, 0.35), rgba(6, 6, 12, 0.72));
 }
+
+/* ==========================================================================
+   FINITIONS — accueil : bandeau de paiement, carte d'appel à l'action,
+   alignement des badges et rythme des sections
+   ========================================================================== */
+
+/* --- Moyens de paiement : une ligne claire (le bandeau défilant reste
+       disponible pour la boutique via .pay-marquee) ------------------------ */
+.pay-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 14px 24px; }
+.pay-label {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 0.76rem; font-weight: 800; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--text-3); white-space: nowrap;
+}
+.pay-label svg { color: var(--success); flex: none; }
+.pay-chips { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px; }
+.pay-chips .pay-chip { padding: 9px 16px; font-size: 0.84rem; background: rgba(255, 255, 255, 0.045); transition: border-color 0.25s var(--ease), color 0.25s var(--ease); }
+.pay-chips .pay-chip:hover { border-color: var(--border-strong); color: var(--text-1, #fff); }
+
+/* --- Badge : alignement correct quand il contient une icône SVG ---------- */
+.badge { display: inline-flex; align-items: center; gap: 6px; line-height: 1; }
+.badge svg { width: 13px; height: 13px; flex: none; }
+
+/* --- Carte d'appel à l'action : halo lumineux, légère élévation au survol */
+.cta-card {
+  position: relative; overflow: hidden; isolation: isolate;
+  text-align: center; padding: 58px 28px;
+  background: linear-gradient(140deg, rgba(124, 92, 255, 0.22), rgba(34, 211, 238, 0.08));
+  border-color: rgba(124, 92, 255, 0.38);
+  transition: transform 0.35s var(--ease), border-color 0.35s var(--ease), box-shadow 0.35s var(--ease);
+}
+.cta-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(124, 92, 255, 0.62);
+  box-shadow: 0 24px 60px -30px rgba(124, 92, 255, 0.75);
+}
+.cta-glow {
+  position: absolute; inset: -45% -15% auto; height: 190%; z-index: -1;
+  background: radial-gradient(46% 56% at 50% 42%, rgba(124, 92, 255, 0.42), transparent 70%);
+  filter: blur(26px); pointer-events: none;
+}
+
+/* --- Hiérarchie : titres de section légèrement plus espacés du texte ----- */
+.section .center .lead { margin-top: 16px; }
+.section .center .h2 + .lead { margin-top: 18px; }
+
+/* --- Accessibilité : focus visible cohérent sur tous les éléments cliquables */
+a:focus-visible, button:focus-visible, .btn:focus-visible, [data-link]:focus-visible {
+  outline: 2px solid var(--primary-2, #7c5cff);
+  outline-offset: 3px;
+  border-radius: 8px;
+}

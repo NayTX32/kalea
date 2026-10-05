@@ -1,5 +1,9 @@
 /**
  * KALEA — vue Accueil.
+ *
+ * Structure volontairement resserrée (une seule fois le récit « 4 étapes »,
+ * plus de bloc technique destiné aux développeurs) : héros, moyens de paiement,
+ * avantages, packs, Discord & récompenses, appel à l'action.
  */
 import { get } from '../api.js';
 import { state } from '../state.js';
@@ -29,12 +33,12 @@ export async function homeView() {
           <div class="eyebrow">Boutique officielle du jeu</div>
           <h1 class="h1">Débloquez votre <span class="grad-text">jeu</span> en quelques secondes.</h1>
           <p class="lead" style="margin-top:18px">
-            KALEA vend les packs officiels du jeu. Vous payez en toute sécurité, le système
-            vérifie le paiement, attribue votre rôle Discord et envoie vos récompenses
-            directement sur votre compte en jeu — automatiquement.
+            Choisissez votre pack, payez en toute sécurité : votre rôle Discord et vos
+            récompenses en jeu arrivent <strong>automatiquement</strong>, sans attente
+            ni intervention manuelle.
           </p>
           <div class="hero-actions">
-            <a class="btn btn-primary btn-lg" href="/boutique" data-link>Voir la boutique →</a>
+            <a class="btn btn-primary btn-lg" href="/boutique" data-link>Voir la boutique ${icon('arrow-right', { size: 17 })}</a>
             <a class="btn btn-ghost btn-lg" href="/packs" data-link>Comparer les packs</a>
           </div>
           <div class="hero-stats">
@@ -47,17 +51,17 @@ export async function homeView() {
         <aside class="hero-panel reveal">
           <div class="row-between">
             <strong>Flux d'achat</strong>
-            <span class="badge badge-paid">Temps réel</span>
+            <span class="badge badge-paid">${icon('activity', { size: 14 })} Temps réel</span>
           </div>
           <div class="step-track" style="margin-top:18px">
-            <div class="step-item ok"><span class="dot">1</span><div><strong>Commande créée</strong><div class="tiny">ID unique + clé d'idempotence</div></div></div>
-            <div class="step-item ok"><span class="dot">2</span><div><strong>Paiement hébergé</strong><div class="tiny">PayPal / carte · aucune donnée bancaire</div></div></div>
-            <div class="step-item ok"><span class="dot">3</span><div><strong>Webhook vérifié</strong><div class="tiny">Signature HMAC contrôlée côté serveur</div></div></div>
-            <div class="step-item running"><span class="dot">4</span><div><strong>Livraison</strong><div class="tiny">Rôle Discord + récompenses en jeu</div></div></div>
+            <div class="step-item ok"><span class="dot">1</span><div><strong>Commande créée</strong><div class="tiny">Votre panier est réservé immédiatement</div></div></div>
+            <div class="step-item ok"><span class="dot">2</span><div><strong>Paiement sécurisé</strong><div class="tiny">Aucune donnée bancaire stockée par KALEA</div></div></div>
+            <div class="step-item ok"><span class="dot">3</span><div><strong>Confirmation</strong><div class="tiny">Le paiement est vérifié côté serveur</div></div></div>
+            <div class="step-item running"><span class="dot">4</span><div><strong>Recevez tout</strong><div class="tiny">Rôle Discord + récompenses en jeu</div></div></div>
           </div>
           <div class="notice notice-info" style="margin-top:18px">
-            <span>🔒</span>
-            <div class="small">Chaque transaction porte un identifiant unique : une récompense ne peut jamais être délivrée deux fois.</div>
+            ${icon('lock', { size: 18 })}
+            <div class="small">Chaque commande est unique : vos récompenses ne peuvent jamais être délivrées deux fois.</div>
           </div>
         </aside>
       </div>
@@ -66,12 +70,10 @@ export async function homeView() {
     <!-- ========================= MOYENS DE PAIEMENT ========================= -->
     <section class="section-sm" style="padding-top:0">
       <div class="container">
-        <p class="center tiny" style="margin-bottom:16px;letter-spacing:.16em;text-transform:uppercase">
-          Paiement sécurisé — ${esc(payments.activeLabel ?? 'prestataire professionnel')}
-        </p>
-        <div class="pay-marquee">
-          <div class="pay-track">
-            ${[...methods, ...methods].map((m) => `<span class="pay-chip">${esc(m)}</span>`).join('') || '<span class="pay-chip">Paiement sécurisé</span>'}
+        <div class="pay-row center">
+          <span class="pay-label">${icon('shield-check', { size: 16 })} Paiement sécurisé${payments.activeLabel ? ` — ${esc(payments.activeLabel)}` : ''}</span>
+          <div class="pay-chips">
+            ${methods.map((m) => `<span class="pay-chip">${esc(m)}</span>`).join('') || '<span class="pay-chip">Paiement sécurisé</span>'}
           </div>
         </div>
       </div>
@@ -84,26 +86,26 @@ export async function homeView() {
           <div class="eyebrow" style="justify-content:center">Pourquoi KALEA</div>
           <h2 class="h2">Une boutique pensée pour les <span class="grad-text">joueurs</span></h2>
           <p class="lead" style="margin:16px auto 0;text-align:center">
-            Frontend, backend, base de données, Discord, API du jeu : tout est connecté,
-            sécurisé et automatisé.
+            Vous payez, on s'occupe du reste : rôle, récompenses et suivi de commande
+            sont gérés automatiquement.
           </p>
         </div>
         <div class="grid grid-4">
           <div class="card card-hover reveal">
             <div class="card-title">${icon('zap', { size: 19 })} Livraison instantanée</div>
-            <p class="muted small">Dès la confirmation du paiement, le rôle Discord et les récompenses sont attribués, sans intervention manuelle.</p>
+            <p class="muted small">Dès la confirmation du paiement, votre rôle et vos récompenses sont attribués — sans intervention manuelle.</p>
           </div>
           <div class="card card-hover reveal">
-            <div class="card-title">${icon('card', { size: 19 })} Paiement hébergé</div>
+            <div class="card-title">${icon('card', { size: 19 })} Paiement sécurisé</div>
             <p class="muted small">PayPal, carte bancaire et moyens locaux selon votre pays. Aucune donnée bancaire n'est stockée par KALEA.</p>
           </div>
           <div class="card card-hover reveal">
-            <div class="card-title">${icon('bot', { size: 19 })} Discord OAuth2</div>
-            <p class="muted small">Connectez votre compte Discord en un clic : le bot attribue automatiquement le rôle du pack acheté.</p>
+            <div class="card-title">${icon('discord', { size: 19 })} Connexion Discord</div>
+            <p class="muted small">Un clic pour lier votre compte Discord : le bot attribue automatiquement le rôle du pack acheté.</p>
           </div>
           <div class="card card-hover reveal">
-            <div class="card-title">${icon('shield-check', { size: 19 })} Sécurité de production</div>
-            <p class="muted small">Webhooks signés, CSRF, rate limiting, validation serveur, permissions admin et logs complets.</p>
+            <div class="card-title">${icon('shield-check', { size: 19 })} Achat protégé</div>
+            <p class="muted small">Commande traçable de bout en bout, paiement vérifié et remboursement possible depuis votre compte.</p>
           </div>
         </div>
       </div>
@@ -117,7 +119,7 @@ export async function homeView() {
             <div class="eyebrow">Nos offres</div>
             <h2 class="h2">Les packs <span class="grad-text">KALEA</span></h2>
           </div>
-          <a class="btn btn-ghost" href="/packs" data-link>Comparer en détail →</a>
+          <a class="btn btn-ghost" href="/packs" data-link>Comparer en détail ${icon('arrow-right', { size: 16 })}</a>
         </div>
         <div class="grid grid-3">
           ${packs.map((p) => packCard(p, { featured: p.id === featured?.id })).join('')}
@@ -125,54 +127,34 @@ export async function homeView() {
       </div>
     </section>
 
-    <!-- ============================== ÉTAPES ============================== -->
+    <!-- ======================== DISCORD & RÉCOMPENSES ====================== -->
     <section class="section">
       <div class="container">
-        <div class="center" style="max-width:680px;margin:0 auto 54px">
-          <div class="eyebrow" style="justify-content:center">Comment ça marche</div>
-          <h2 class="h2">Quatre étapes, <span class="grad-text">zéro friction</span></h2>
+        <div class="center" style="max-width:720px;margin:0 auto 46px">
+          <div class="eyebrow" style="justify-content:center">Discord &amp; récompenses</div>
+          <h2 class="h2">Acheté, puis <span class="grad-text">livré</span> automatiquement</h2>
+          <p class="lead" style="margin:16px auto 0;text-align:center">
+            Tout se passe tout seul après le paiement : vous n'avez rien à réclamer.
+          </p>
         </div>
-        <div class="steps">
-          <div class="step reveal"><h4>Choisissez</h4><p>Sélectionnez un pack dans la boutique et lancez la commande.</p></div>
-          <div class="step reveal"><h4>Payez</h4><p>Redirection vers la page sécurisée du prestataire (PayPal / carte).</p></div>
-          <div class="step reveal"><h4>Confirmation</h4><p>Le webhook signé est vérifié côté serveur : la commande passe à « Payée ».</p></div>
-          <div class="step reveal"><h4>Recevez</h4><p>Rôle Discord attribué + récompenses envoyées à l'API du jeu.</p></div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ========================== INTÉGRATIONS =========================== -->
-    <section class="section" style="padding-top:0">
-      <div class="container">
         <div class="grid grid-2">
-          <div class="card reveal">
-            <div class="row" style="gap:14px">
-              <div class="pack-emoji">🤖</div>
-              <div><div class="card-title">Discord OAuth2 + Bot</div><div class="tiny">Attribution et retrait automatiques des rôles</div></div>
-            </div>
-            <p class="muted small" style="margin-top:16px">
-              Le joueur connecte son compte Discord, KALEA identifie son serveur et le bot
-              attribue le rôle correspondant au pack. En cas de remboursement complet, le rôle
-              est retiré automatiquement (option configurable).
+          <div class="card card-hover reveal">
+            <div class="card-title">${icon('discord', { size: 20 })} Votre rôle Discord, immédiatement</div>
+            <p class="muted small" style="margin-top:14px">
+              Connectez votre compte Discord une seule fois : le bot vous attribue le rôle
+              correspondant à votre pack (Base, Full Locker ou Moder). En cas de
+              remboursement, le rôle est retiré automatiquement.
             </p>
-            <a class="btn btn-ghost btn-sm" href="/mon-compte" data-link style="margin-top:16px">Connecter mon Discord</a>
+            <a class="btn btn-ghost btn-sm" href="/connexion" data-link style="margin-top:18px">Connecter mon Discord</a>
           </div>
 
-          <div class="card reveal">
-            <div class="row" style="gap:14px">
-              <div class="pack-emoji">🎮</div>
-              <div><div class="card-title">API du jeu signée</div><div class="tiny">HMAC-SHA256 · ID de transaction unique</div></div>
-            </div>
-            <p class="muted small" style="margin-top:16px">Chaque achat confirmé pousse les récompenses vers votre serveur de jeu :</p>
-            <code class="code" style="margin-top:12px">POST /v1/rewards/grant
-X-Kalea-Tx: tx_ord_9f3k…
-{
-  "player":   { "id": "joueur-42" },
-  "rewards":  { "skins": [...],
-                "currency": { "amount": 2500 },
-                "permissions": [...] }
-}</code>
-            <a class="btn btn-ghost btn-sm" href="/faq" data-link style="margin-top:14px">Voir la documentation</a>
+          <div class="card card-hover reveal">
+            <div class="card-title">${icon('gift', { size: 20 })} Vos récompenses en jeu</div>
+            <p class="muted small" style="margin-top:14px">
+              Skins, devise et permissions sont envoyés directement sur votre compte de jeu
+              dès la confirmation du paiement — une seule fois, jamais en attente.
+            </p>
+            <a class="btn btn-ghost btn-sm" href="/faq" data-link style="margin-top:18px">Comment ça marche ?</a>
           </div>
         </div>
       </div>
@@ -181,12 +163,13 @@ X-Kalea-Tx: tx_ord_9f3k…
     <!-- ============================== CTA ================================ -->
     <section class="section-sm">
       <div class="container">
-        <div class="card reveal" style="text-align:center;padding:56px 28px;background:linear-gradient(140deg,rgba(124,92,255,0.22),rgba(34,211,238,0.08))">
+        <div class="card reveal cta-card">
+          <div class="cta-glow" aria-hidden="true"></div>
           <h2 class="h2">Prêt à passer au niveau supérieur ?</h2>
           <p class="lead" style="margin:14px auto 26px;text-align:center">
             Rejoignez les joueurs qui ont déjà débloqué leur locker, leur pack de base ou leur rôle Moder.
           </p>
-          <div class="row" style="justify-content:center;flex-wrap:wrap">
+          <div class="row" style="justify-content:center;flex-wrap:wrap;position:relative">
             <a class="btn btn-primary btn-lg" href="/boutique" data-link>Acheter un pack</a>
             <a class="btn btn-ghost btn-lg" href="/faq" data-link>Questions fréquentes</a>
           </div>
