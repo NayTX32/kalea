@@ -179,8 +179,8 @@ export function authRoutes(router) {
    * message français explicite (refus de l'utilisateur, secret manquant,
    * state falsifié, panne de l'API Discord…).
    */
-  router.get('/api/auth/discord/callback', rateLimit('auth', config.security.rateLimitAuth), async (ctx) => {
-    const fail = (message) => ctx.redirect(`/connexion?error=${encodeURIComponent(message)}`);
+  const discordCallback = async (ctx) => {
+    const fail = (message) => ctx.redirect(`${config.baseUrl}/connexion?error=${encodeURIComponent(message)}`);
 
     const raw = ctx.cookies.kalea_oauth;
     if (!raw) return fail('La session Discord a expiré. Recommencez la connexion.');
@@ -252,7 +252,7 @@ export function authRoutes(router) {
 
       const safeReturn = String(stored.returnTo ?? '/mon-compte');
       const target = safeReturn.startsWith('/') && !safeReturn.startsWith('//') ? safeReturn : '/mon-compte';
-      return ctx.redirect(`${target}?discord=ok${backfill?.granted?.length ? '&sync=1' : ''}`);
+      return ctx.redirect(`${config.baseUrl}${target}?discord=ok${backfill?.granted?.length ? '&sync=1' : ''}`);
     } catch (error) {
       const reason = error?.status && error.status < 500 && error.message
         ? error.message
@@ -261,7 +261,12 @@ export function authRoutes(router) {
       audit('discord.callback_failed', { ip: ctx.ip, meta: { reason: error?.message } });
       return fail(reason);
     }
-  });
+  };
+
+  /* L'URI déclarée chez Discord est http://localhost:4200/callback : ce chemin
+   * est servi par le second écouteur, exactement comme la route d'API. */
+  router.get('/api/auth/discord/callback', rateLimit('auth', config.security.rateLimitAuth), discordCallback);
+  router.get('/callback', rateLimit('auth', config.security.rateLimitAuth), discordCallback);
 
   router.post('/api/auth/discord/unlink', requireAuth, (ctx) => {
     if (!ctx.userRow?.discord_id) throw notFound('Aucun compte Discord lié.');

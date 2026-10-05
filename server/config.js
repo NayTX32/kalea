@@ -45,6 +45,12 @@ const bool = (key, fallback) => {
 
 const NODE_ENV = env('NODE_ENV', 'development');
 const PORT = num('PORT', 4000);
+/**
+ * Second port d'écoute (défaut 4200) : c'est celui enregistré dans l'application
+ * Discord (http://localhost:4200/callback). Le site reste servi sur PORT.
+ * Mettre DISCORD_CALLBACK_PORT=0 pour le désactiver.
+ */
+const CALLBACK_PORT = Number(env('DISCORD_CALLBACK_PORT', '4200')) || 0;
 const BASE_URL = env('BASE_URL', `http://localhost:${PORT}`).replace(/\/+$/, '');
 
 /** Secret de session : fourni en prod, auto-généré en dev (invalide au redémarrage). */
@@ -96,6 +102,8 @@ export const config = {
   nodeEnv: NODE_ENV,
   isProd: NODE_ENV === 'production',
   port: PORT,
+  /** Second écouteur : reçoit la redirection Discord (…/callback). */
+  callbackPort: CALLBACK_PORT,
   baseUrl: BASE_URL,
   root: ROOT,
   dataDir: path.resolve(ROOT, env('DATABASE_URL', 'data/kalea.db').includes('/') || env('DATABASE_URL', 'data/kalea.db').includes('\\')

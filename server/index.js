@@ -82,6 +82,22 @@ await new Promise((resolve, reject) => {
   throw error;
 });
 
+/* ----------------------- Écouteur de callback Discord -----------------------
+ * L'application Discord est enregistrée avec la redirection
+ * http://localhost:4200/callback. On sert donc le même site sur ce second port
+ * pour recevoir le code d'autorisation, tout en gardant le site sur PORT.
+ * Un port occupé n'est qu'une alerte : le site continue de fonctionner.
+ * -------------------------------------------------------------------------- */
+if (config.callbackPort && config.callbackPort !== config.port) {
+  const callbackServer = http.createServer(handler);
+  callbackServer.on('error', (error) => log.warn('callback_port_unavailable', {
+    port: config.callbackPort, error: error.message,
+  }));
+  callbackServer.listen(config.callbackPort, '0.0.0.0', () => {
+    log.info('callback_port_started', { port: config.callbackPort, path: '/callback' });
+  });
+}
+
 // 3. Tâches de fond.
 pruneSessions();
 const sweeper = setInterval(() => {
