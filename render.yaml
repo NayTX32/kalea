@@ -1,0 +1,33 @@
+# KALEA — Blueprint Render (New → Blueprint → détection automatique)
+services:
+  - type: web
+    name: kalea
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      # Renseignez ces secrets depuis le tableau de bord Render :
+      - key: BASE_URL
+        sync: false          # https://votre-app.onrender.com
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: ADMIN_GATE_PASSWORD
+        sync: false
+      # Discord OAuth2 (connexion « Se connecter avec Discord »)
+      - key: DISCORD_CLIENT_ID
+        sync: false
+      - key: DISCORD_CLIENT_SECRET
+        sync: false
+      # Paiements (laisser vide = mode démonstration)
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+    disk:
+      name: kalea-data
+      mountPath: /app/data
+      sizeGB: 1

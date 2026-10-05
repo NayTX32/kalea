@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#06060c" />
+  <meta name="description" content="KALEA — la boutique officielle du jeu : packs, livraison automatique des récompenses, rôle Discord et paiement sécurisé." />
+  <title>KALEA — Boutique officielle</title>
+  <link rel="icon" href="/assets/img/logo.png" type="image/png" />
+  <link rel="apple-touch-icon" href="/assets/img/logo.png" />
+  <link rel="preload" as="font" type="font/woff2" href="/assets/fonts/space-grotesk-latin.woff2" crossorigin />
+  <link rel="preload" as="font" type="font/woff2" href="/assets/fonts/inter-latin.woff2" crossorigin />
+  <link rel="stylesheet" href="/assets/css/fonts.css" />
+  <link rel="stylesheet" href="/assets/css/kalea.css" />
+</head>
+<body>
+  <div class="bg-photo"></div>
+  <div class="bg-fx"></div>
+  <div class="bg-grid"></div>
+
+  <header class="header" id="header">
+    <div class="container header-inner">
+      <a class="brand" href="/" data-link aria-label="KALEA — Accueil">
+        <span class="brand-mark">
+          <img src="/assets/img/logo.png" alt="" width="42" height="42" />
+        </span>
+        <span>
+          <span class="brand-name">KALEA</span>
+          <span class="brand-sub">Boutique officielle</span>
+        </span>
+      </a>
+
+      <nav class="nav" id="nav" aria-label="Navigation principale">
+        <a href="/" data-link data-nav="/">Accueil</a>
+        <a href="/boutique" data-link data-nav="/boutique">Boutique</a>
+        <a href="/packs" data-link data-nav="/packs">Packs</a>
+        <a href="/mon-compte" data-link data-nav="/mon-compte">Mon compte</a>
+        <a href="/faq" data-link data-nav="/faq">FAQ</a>
+        <a href="/support" data-link data-nav="/support">Support</a>
+        <a href="/admin" data-link data-nav="/admin" id="navAdmin" hidden>Dashboard</a>
+      </nav>
+
+      <div class="header-actions" id="headerActions">
+        <a class="btn btn-ghost btn-sm btn-hide-mobile" href="/connexion" data-link id="btnLogin">Connexion</a>
+        <a class="btn btn-primary btn-sm" href="/boutique" data-link id="btnCta">Acheter un pack</a>
+        <button class="burger" id="burger" aria-label="Ouvrir le menu" aria-expanded="false"><span></span></button>
+      </div>
+    </div>
+  </header>
+
+  <main id="view" class="view-enter" tabindex="-1">
+    <div class="loader-page"><div class="spinner spinner-lg"></div><p>Chargement de KALEA…</p></div>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div>
+          <a class="brand" href="/" data-link style="margin-bottom:14px">
+            <span class="brand-mark">
+              <img src="/assets/img/logo.png" alt="" width="38" height="38" />
+            </span>
+            <span><span class="brand-name">KALEA</span><span class="brand-sub">Boutique officielle</span></span>
+          </a>
+          <p class="muted small" style="max-width:36ch">
+            La boutique officielle du jeu. Achetez un pack, recevez votre rôle Discord et vos
+            récompenses en jeu automatiquement, en quelques secondes.
+          </p>
+          <div class="pill-group" style="margin-top:16px" id="footerPays"></div>
+        </div>
+        <div>
+          <h6>Boutique</h6>
+          <a href="/boutique" data-link>Tous les packs</a>
+          <a href="/packs" data-link>Comparer les packs</a>
+          <a href="/mon-compte" data-link>Mon compte</a>
+          <a href="/mon-compte" data-link>Mes commandes</a>
+        </div>
+        <div>
+          <h6>Aide</h6>
+          <a href="/faq" data-link>FAQ</a>
+          <a href="/support" data-link>Support</a>
+          <a href="/connexion" data-link>Connexion / Inscription</a>
+          <a href="#" id="footerDiscord" target="_blank" rel="noopener">Serveur Discord</a>
+        </div>
+        <div>
+          <h6>Sécurité</h6>
+          <a href="/faq" data-link>Paiement sécurisé</a>
+          <a href="/faq" data-link>Confidentialité</a>
+          <a href="/faq" data-link>Conditions de vente</a>
+          <a href="#" id="footerStatus">État des services</a>
+          <a href="/admin" data-link class="footer-admin">Administration 🔒</a>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>© <span id="year"></span> KALEA — Tous droits réservés.</span>
+        <span id="footerProvider">Paiement sécurisé · Aucune donnée bancaire stockée</span>
+      </div>
+    </div>
+  </footer>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+  <div id="modalRoot"></div>
+
+  <script type="module" src="/assets/js/main.js"></script>
+</body>
+</html>

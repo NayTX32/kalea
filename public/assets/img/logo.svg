@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 666" role="img" aria-label="KALEA">
+  <!-- Logo KALEA : dégradé maillé (cyan → bleu → indigo → magenta) + « K » blanc -->
+  <defs>
+    <radialGradient id="kBase" cx="0.5" cy="0.45" r="0.75">
+      <stop offset="0" stop-color="#4a3bd8" />
+      <stop offset="1" stop-color="#2a1f9e" />
+    </radialGradient>
+    <radialGradient id="kBlueTop" cx="0.42" cy="0" r="0.62">
+      <stop offset="0" stop-color="#3e86f0" stop-opacity="1" />
+      <stop offset="0.55" stop-color="#3e86f0" stop-opacity="0.5" />
+      <stop offset="1" stop-color="#3e86f0" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="kCyanTL" cx="0.03" cy="0.02" r="0.55">
+      <stop offset="0" stop-color="#8df6ff" stop-opacity="1" />
+      <stop offset="0.5" stop-color="#66e2f5" stop-opacity="0.6" />
+      <stop offset="1" stop-color="#66e2f5" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="kBlueML" cx="-0.06" cy="0.55" r="0.55">
+      <stop offset="0" stop-color="#2b5fe0" stop-opacity="0.95" />
+      <stop offset="0.55" stop-color="#2b5fe0" stop-opacity="0.45" />
+      <stop offset="1" stop-color="#2b5fe0" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="kIndigoTR" cx="1.04" cy="0.05" r="0.62">
+      <stop offset="0" stop-color="#100d4a" stop-opacity="0.97" />
+      <stop offset="0.55" stop-color="#141160" stop-opacity="0.6" />
+      <stop offset="1" stop-color="#141160" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="kVioletB" cx="0.5" cy="1.06" r="0.6">
+      <stop offset="0" stop-color="#a32ff2" stop-opacity="1" />
+      <stop offset="0.55" stop-color="#a32ff2" stop-opacity="0.55" />
+      <stop offset="1" stop-color="#a32ff2" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="kMagentaBR" cx="0.97" cy="1.02" r="0.65">
+      <stop offset="0" stop-color="#e534f7" stop-opacity="1" />
+      <stop offset="0.5" stop-color="#d52ef2" stop-opacity="0.6" />
+      <stop offset="1" stop-color="#d52ef2" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="kDarkBL" cx="-0.03" cy="1.06" r="0.6">
+      <stop offset="0" stop-color="#0b0418" stop-opacity="0.96" />
+      <stop offset="0.5" stop-color="#120826" stop-opacity="0.6" />
+      <stop offset="1" stop-color="#120826" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+
+  <rect width="680" height="666" fill="url(#kBase)" />
+  <rect width="680" height="666" fill="url(#kBlueTop)" />
+  <rect width="680" height="666" fill="url(#kCyanTL)" />
+  <rect width="680" height="666" fill="url(#kBlueML)" />
+  <rect width="680" height="666" fill="url(#kIndigoTR)" />
+  <rect width="680" height="666" fill="url(#kVioletB)" />
+  <rect width="680" height="666" fill="url(#kMagentaBR)" />
+  <rect width="680" height="666" fill="url(#kDarkBL)" />
+
+  <!-- « K » : lame verticale + flèche vers la gauche + deux pointes vers la droite -->
+  <path fill="#ffffff" d="M300 148 L330 255 L517 228 L347 352 L517 458 L332 424 L307 537 L305 412 L145 345 L300 297 Z" />
+</svg>

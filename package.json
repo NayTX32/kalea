@@ -1,0 +1,17 @@
+{
+  "name": "kalea-boutique",
+  "version": "1.0.0",
+  "private": true,
+  "description": "KALEA — Boutique officielle du jeu : packs, paiements, Discord OAuth2, livraison automatique et dashboard admin.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "game:mock": "node tools/mock-game-server.js",
+    "seed": "node server/scripts/seed.js"
+  },
+  "license": "UNLICENSED"
+}

@@ -1,0 +1,11 @@
+node_modules/
+data/
+*.log
+.env
+.env.local
+.DS_Store
+
+# Accès et archives — jamais publiés
+ACCES.md
+kalea-deploiement.zip
+*.zip
