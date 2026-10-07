@@ -1,7 +1,10 @@
-# KALEA — Blueprint Render (New → Blueprint → détection automatique)
+# KALEASHOP — Blueprint Render (New → Blueprint → détection automatique)
+#
+# Le nom du service fixe l'URL publique : https://kaleashop.onrender.com
+# Pour un domaine personnalisé (ex. kaleashop.com), voir MISE-EN-LIGNE.md.
 services:
   - type: web
-    name: kalea
+    name: kaleashop
     runtime: docker
     plan: free
     healthCheckPath: /api/health
@@ -10,24 +13,63 @@ services:
         value: production
       - key: PORT
         value: 10000
-      # Renseignez ces secrets depuis le tableau de bord Render :
+      # URL publique du site (utilisée pour les redirections OAuth2).
       - key: BASE_URL
-        sync: false          # https://votre-app.onrender.com
+        value: https://kaleashop.onrender.com
       - key: SESSION_SECRET
         generateValue: true
+      # Compte administrateur initial (créé au premier démarrage).
+      # Mot de passe de connexion classique /mon-compte : généré automatiquement
+      # (modifiable depuis Mon compte). S'il est vide, un mot de passe aléatoire
+      # est généré : seule la porte /admin reste alors utilisable.
+      - key: ADMIN_PASSWORD
+        generateValue: true
+      # Mot de passe unique de la porte /admin.
+      # OBLIGATOIRE : aucune valeur par défaut n'est livrée en production,
+      # laissé vide = la porte /admin reste fermée (message d'erreur explicite).
       - key: ADMIN_GATE_PASSWORD
         sync: false
-      # Discord OAuth2 (connexion « Se connecter avec Discord »)
+      # Proxy Render : on fait confiance à X-Forwarded-For (IP réelles des clients).
+      - key: TRUST_PROXY
+        value: "true"
+      # Aucun second écouteur en production : /callback est servi sur PORT.
+      - key: DISCORD_CALLBACK_PORT
+        value: "0"
+
+      # --- Discord OAuth2 (connexion « Se connecter avec Discord ») ---
       - key: DISCORD_CLIENT_ID
-        sync: false
+        value: "1556218934468943923"
       - key: DISCORD_CLIENT_SECRET
         sync: false
-      # Paiements (laisser vide = mode démonstration)
+      # Redirection exacte à enregistrer dans le Developer Portal Discord.
+      - key: DISCORD_REDIRECT_URI
+        value: https://kaleashop.onrender.com/callback
+
+      # --- Discord Bot : vérification serveur du rôle « Founder » ---
+      # (ne JAMAIS exposer ces valeurs côté navigateur : elles ne quittent pas le serveur)
+      - key: DISCORD_BOT_TOKEN
+        sync: false
+      - key: DISCORD_GUILD_ID
+        value: "1555684559755026482"
+      - key: DISCORD_ROLE_FONDATEUR
+        value: "1555698043481882728"
+
+      # --- Paiements (laisser vide = mode démonstration) ---
+      - key: PAYMENT_PROVIDER
+        value: auto
       - key: PAYPAL_CLIENT_ID
         sync: false
       - key: PAYPAL_CLIENT_SECRET
         sync: false
-    disk:
-      name: kalea-data
-      mountPath: /app/data
-      sizeGB: 1
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+
+    # Disque persistant : obligatoire pour conserver SQLite entre deux
+    # redéploiements. Il est refusé par Render sur le plan gratuit —
+    # décommentez ce bloc si vous passez sur un plan Starter ou supérieur.
+    # disk:
+    #   name: kaleashop-data
+    #   mountPath: /app/data
+    #   sizeGB: 1

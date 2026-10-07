@@ -9,6 +9,7 @@ import { rateLimit } from '../lib/ratelimit.js';
 import { audit, log } from '../lib/logger.js';
 import { createSession, destroySession, requireAuth, toPublicUser } from '../middleware/session.js';
 import { buildAuthorizeUrl, exchangeCode, fetchCurrentUser, fetchGuildMember } from '../services/discord.js';
+import { syncDiscordRole, permissionsOf } from '../services/roles.js';
 import { backfillUserEntitlements } from '../services/fulfillment.js';
 
 export function authRoutes(router) {
@@ -76,6 +77,13 @@ export function authRoutes(router) {
     const password = String(body.password ?? '');
     if (!password) throw badRequest('Mot de passe obligatoire.');
 
+    // Aucun mot de passe configuré (production sans ADMIN_GATE_PASSWORD) :
+    // on refuse explicitement plutôt que d'accepter une valeur par défaut publique.
+    if (!config.admin.gatePassword) {
+      log.warn('admin_gate_unconfigured', { ip: ctx.ip });
+      throw unauthorized('Porte d’administration non configurée : renseignez ADMIN_GATE_PASSWORD.');
+    }
+
     if (!safeCompare(password, config.admin.gatePassword)) {
       audit('auth.admin_unlock_failed', { ip: ctx.ip });
       log.warn('admin_unlock_failed', { ip: ctx.ip });
@@ -96,6 +104,7 @@ export function authRoutes(router) {
   /* -------------------------------- Profil -------------------------------- */
   router.get('/api/me', (ctx) => ctx.json({
     user: ctx.user ?? null,
+    permissions: permissionsOf(ctx.userRow),
     csrf: ctx.cookies[config.session.csrfCookie] ?? null,
     isAuthenticated: Boolean(ctx.user),
   }));
@@ -126,7 +135,7 @@ export function authRoutes(router) {
       throw badRequest('Discord OAuth2 est configuré : utilisez la vraie connexion.');
     }
     const body = assertObject(ctx.body);
-    const username = str(body.username ?? 'Joueur KALEA', { field: 'pseudo', min: 2, max: 32 });
+    const username = str(body.username ?? 'Joueur KaleaShop', { field: 'pseudo', min: 2, max: 32 });
     const slug = username.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 24) || 'joueur';
     // Identité Discord déterministe : le même pseudo retrouve toujours le même compte.
@@ -135,7 +144,7 @@ export function authRoutes(router) {
     let userRow = ctx.userRow ?? null;
     if (userRow) {
       const taken = get('SELECT id FROM users WHERE discord_id = ? AND id != ?', discordId, userRow.id);
-      if (taken) throw conflict('Ce compte Discord est déjà lié à un autre compte KALEA.', 'discord_linked_elsewhere');
+      if (taken) throw conflict('Ce compte Discord est déjà lié à un autre compte KaleaShop.', 'discord_linked_elsewhere');
     } else {
       userRow = get('SELECT * FROM users WHERE discord_id = ?', discordId) ?? null;
       if (!userRow) {
@@ -215,7 +224,7 @@ export function authRoutes(router) {
       let userRow = ctx.userRow ?? null;
       if (userRow) {
         const taken = get('SELECT id FROM users WHERE discord_id = ? AND id != ?', me.id, userRow.id);
-        if (taken) throw conflict('Ce compte Discord est déjà lié à un autre compte KALEA.', 'discord_linked_elsewhere');
+        if (taken) throw conflict('Ce compte Discord est déjà lié à un autre compte KaleaShop.', 'discord_linked_elsewhere');
       } else {
         userRow = get('SELECT * FROM users WHERE discord_id = ?', me.id)
           ?? (me.email ? get('SELECT * FROM users WHERE email = ?', me.email) : null)
@@ -238,21 +247,37 @@ export function authRoutes(router) {
            discord_access_token = ?, discord_expires_at = ?, updated_at = ? WHERE id = ?`,
         me.id, me.username, me.avatar, token.accessToken, Date.now() + token.expiresIn * 1000, now(), userRow.id,
       );
-      const updated = get('SELECT * FROM users WHERE id = ?', userRow.id);
+      let updated = get('SELECT * FROM users WHERE id = ?', userRow.id);
+
+      /* Vérification serveur du rôle Discord « Fondateur » :
+       * le rôle site est calculé ici, contre l'API Discord — jamais depuis
+       * le client. Un compte Fondateur devient Administrateur, sinon il reste
+       * utilisateur. (Échec Discord → aucun rôle modifié.) */
+      const roleSync = await syncDiscordRole(updated, { force: true, reason: 'connexion_discord' })
+        .catch((error) => {
+          log.warn('role_sync_failed', { userId: userRow.id, error: error.message });
+          return { checked: false, failed: true };
+        });
+      if (roleSync.checked) updated = get('SELECT * FROM users WHERE id = ?', userRow.id);
 
       if (ctx.session) destroySession(ctx);
       createSession(ctx, updated);
       run('UPDATE users SET last_login_at = ? WHERE id = ?', now(), updated.id);
 
-      audit('discord.linked', { actor: toPublicUser(updated), ip: ctx.ip, meta: { discordId: me.id, guildMember: Boolean(member) } });
-      log.info('discord_linked', { userId: updated.id, discordId: me.id, inGuild: Boolean(member) });
+      audit('discord.linked', { actor: toPublicUser(updated), ip: ctx.ip, meta: { discordId: me.id, guildMember: Boolean(member), roleSync: roleSync.action ?? 'keep' } });
+      log.info('discord_linked', { userId: updated.id, discordId: me.id, inGuild: Boolean(member), role: updated.role });
 
       // Attribue les rôles des packs déjà payés (rattrapage).
       const backfill = await backfillUserEntitlements(updated.id);
 
       const safeReturn = String(stored.returnTo ?? '/mon-compte');
       const target = safeReturn.startsWith('/') && !safeReturn.startsWith('//') ? safeReturn : '/mon-compte';
-      return ctx.redirect(`${config.baseUrl}${target}?discord=ok${backfill?.granted?.length ? '&sync=1' : ''}`);
+      const flags = [
+        backfill?.granted?.length ? 'sync=1' : '',
+        roleSync.action === 'promote' ? 'admin=1' : '',
+        roleSync.action === 'demote' ? 'roles=down' : '',
+      ].filter(Boolean).join('&');
+      return ctx.redirect(`${config.baseUrl}${target}?discord=ok${flags ? `&${flags}` : ''}`);
     } catch (error) {
       const reason = error?.status && error.status < 500 && error.message
         ? error.message
@@ -270,10 +295,51 @@ export function authRoutes(router) {
 
   router.post('/api/auth/discord/unlink', requireAuth, (ctx) => {
     if (!ctx.userRow?.discord_id) throw notFound('Aucun compte Discord lié.');
+    /* Un administrateur dont les droits venaient de Discord les perd en se
+     * désassociant ; les droits accordés manuellement sont conservés. */
+    const fromDiscord = ctx.userRow.role === 'admin' && ctx.userRow.role_source === 'discord';
     run(`UPDATE users SET discord_id = NULL, discord_username = NULL, discord_avatar = NULL,
-         discord_access_token = NULL, discord_expires_at = NULL, updated_at = ? WHERE id = ?`, now(), ctx.user.id);
-    audit('discord.unlinked', { actor: ctx.user, ip: ctx.ip });
-    return ctx.json({ ok: true });
+         discord_access_token = NULL, discord_expires_at = NULL, discord_founder = 0,
+         discord_checked_at = NULL, role = ?, role_source = ?, updated_at = ? WHERE id = ?`,
+      fromDiscord ? 'user' : ctx.userRow.role,
+      fromDiscord ? 'manual' : (ctx.userRow.role_source ?? 'manual'),
+      now(), ctx.user.id);
+    audit('discord.unlinked', { actor: ctx.user, ip: ctx.ip, meta: { adminRevoked: fromDiscord } });
+    const fresh = get('SELECT * FROM users WHERE id = ?', ctx.user.id);
+    return ctx.json({ ok: true, user: toPublicUser(fresh), permissions: permissionsOf(fresh) });
+  });
+
+  /**
+   * Revalidation à la demande du rôle Discord (bouton « Vérifier mon rôle »).
+   * Force l'interrogation serveur de l'API Discord — indispensable après un
+   * changement de rôle sur le serveur.
+   */
+  router.post('/api/account/discord/sync', requireAuth, rateLimit('auth', config.security.rateLimitAuth), async (ctx) => {
+    if (!ctx.userRow?.discord_id) throw badRequest('Aucun compte Discord lié.');
+    let result;
+    try {
+      result = await syncDiscordRole(ctx.userRow, { force: true, reason: 'verification_manuelle' });
+    } catch (error) {
+      log.warn('role_sync_failed', { userId: ctx.user.id, error: error.message });
+      throw badRequest('Impossible de vérifier votre rôle Discord pour le moment. Réessayez dans un instant.');
+    }
+    const fresh = get('SELECT * FROM users WHERE id = ?', ctx.user.id);
+    const message = !result.checked
+      ? (result.cached
+        ? 'Vérification récente effectuée : aucun changement.'
+        : result.skipped === 'non_configure'
+          ? 'Vérification non configurée : renseignez DISCORD_GUILD_ID et DISCORD_ROLE_FOUNDATEUR.'
+          : result.skipped === 'identifiant_invalide'
+            ? 'Identifiant Discord non valide sur ce compte : aucun rôle modifié. Reconnectez-vous avec Discord pour le corriger.'
+            : 'Discord est injoignable : aucun rôle modifié (réessayez plus tard).')
+      : result.action === 'promote'
+        ? 'Rôle Fondateur confirmé : privilèges administrateur accordés.'
+        : result.action === 'demote'
+          ? 'Rôle Fondateur introuvable : privilèges administrateur retirés.'
+          : result.founder
+            ? 'Rôle Fondateur confirmé.'
+            : 'Aucun changement : vous ne possédez pas le rôle Fondateur.';
+    return ctx.json({ user: toPublicUser(fresh), permissions: permissionsOf(fresh), result, message });
   });
 
   /* ---------------------- Profil / mot de passe ---------------------- */

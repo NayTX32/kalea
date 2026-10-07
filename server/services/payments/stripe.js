@@ -87,7 +87,7 @@ export const stripeProvider = {
               unit_amount: order.amount_cents,
               product_data: {
                 name: `${pack.emoji} ${pack.name}`,
-                description: (pack.tagline || 'Pack officiel KALEA').slice(0, 140),
+                description: (pack.tagline || 'Pack officiel KaleaShop').slice(0, 140),
               },
             },
           },

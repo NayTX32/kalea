@@ -14,15 +14,32 @@ import { fulfillOrder, getDelivery } from '../services/fulfillment.js';
 import { grantRewards } from '../services/gameapi.js';
 
 export function orderRoutes(router) {
-  /* ------------------------- Création d'une commande ------------------------- */
+  /* ------------------------- Création d'une commande -------------------------
+   * Achat direct (packId) ou panier complet (items : [{ packId, qty }]).
+   * Les prix sont toujours relevés côté serveur — le client n'envoie jamais
+   * de montant.
+   */
   router.post('/api/orders', requireAuth, rateLimit('api'), (ctx) => {
     const body = assertObject(ctx.body);
-    const packId = str(body.packId, { field: 'pack', min: 1, max: 60 });
     const idempotencyKey = str(body.idempotencyKey ?? '', { field: 'clé', max: 80, required: false }) || null;
-    const pack = getPack(packId);
+    const items = Array.isArray(body.items)
+      ? body.items.map((entry) => ({ packId: String(entry?.packId ?? ''), qty: Number(entry?.qty ?? 1) }))
+      : null;
+    const packId = items ? null : str(body.packId, { field: 'pack', min: 1, max: 60 });
+    const promoCode = str(body.promoCode ?? '', { field: 'code promo', max: 32, required: false }) || null;
 
-    const order = createOrder({ user: ctx.user, packId: pack.id, idempotencyKey });
-    audit('order.created', { actor: ctx.user, target: order.id, ip: ctx.ip, meta: { pack: pack.slug, amount: order.amount_cents } });
+    const order = createOrder({ user: ctx.user, packId, items, idempotencyKey, promoCode });
+    const primary = getPack(order.pack_id);
+    audit('order.created', {
+      actor: ctx.user, target: order.id, ip: ctx.ip,
+      meta: {
+        pack: primary?.slug ?? order.pack_id,
+        amount: order.amount_cents,
+        articles: items?.length ?? 1,
+        promo: order.promo_code,
+        discount: order.discount_cents,
+      },
+    });
 
     if (order.status === ORDER_STATUS.PAID) {
       return ctx.json({ order: serializeOrder(order), alreadyPaid: true });

@@ -1,8 +1,13 @@
+# KALEASHOP — rien de confidentiel dans le contexte de construction Docker.
+# Le Dockerfile ne copie que package.json/, server/, public/ et tools/.
 node_modules
 data
 .git
 *.log
 .env
 .env.local
+ACCES.md
+*.zip
+.DS_Store
 README.md
 render.yaml

@@ -2,8 +2,10 @@
 import { config } from '../config.js';
 import { all, get, parseJson } from '../db.js';
 import { rateLimit } from '../lib/ratelimit.js';
-import { notFound } from '../lib/errors.js';
+import { badRequest, notFound } from '../lib/errors.js';
 import { listPacks, getPack, serializePack } from '../services/packs.js';
+import { listUsedCategories, getCategoryRow } from '../services/categories.js';
+import { applyPromotion } from '../services/promotions.js';
 import { paymentsStatus } from '../services/payments/index.js';
 import { discordStatus } from '../services/discord.js';
 import { gameStatus } from '../services/gameapi.js';
@@ -11,11 +13,11 @@ import { gameStatus } from '../services/gameapi.js';
 export const FAQ = [
   {
     q: 'Comment recevoir mon pack après l’achat ?',
-    a: 'Dès que le paiement est confirmé par le prestataire (webhook serveur), KALEA attribue automatiquement le rôle Discord associé et envoie les récompenses au serveur du jeu. Rien à faire de votre côté : consultez « Mon compte » pour suivre la livraison.',
+    a: 'Dès que le paiement est confirmé par le prestataire (webhook serveur), KaleaShop attribue automatiquement le rôle Discord associé et envoie les récompenses au serveur du jeu. Rien à faire de votre côté : consultez « Mon compte » pour suivre la livraison.',
   },
   {
-    q: 'Mes informations bancaires sont-elles stockées par KALEA ?',
-    a: 'Non. Le paiement est intégralement traité par le prestataire (page hébergée). KALEA ne reçoit ni numéro de carte, ni cryptogramme, ni code CVC — uniquement le statut de la transaction.',
+    q: 'Mes informations bancaires sont-elles stockées par KaleaShop ?',
+    a: 'Non. Le paiement est intégralement traité par le prestataire (page hébergée). KaleaShop ne reçoit ni numéro de carte, ni cryptogramme, ni code CVC — uniquement le statut de la transaction.',
   },
   {
     q: 'Quels moyens de paiement sont acceptés ?',
@@ -35,7 +37,7 @@ export const FAQ = [
   },
   {
     q: 'Où trouver mon identifiant de jeu ?',
-    a: 'Dans le jeu, ouvrez le menu Profil : votre identifiant KALEA y est affiché. Renseignez-le dans « Mon compte » pour que les récompenses soient livrées au bon joueur.',
+    a: 'Dans le jeu, ouvrez le menu Profil : votre identifiant de joueur y est affiché. Renseignez-le dans « Mon compte » pour que les récompenses soient livrées au bon joueur.',
   },
   {
     q: 'Un paiement a échoué, que faire ?',
@@ -50,12 +52,12 @@ export function publicRoutes(router) {
       all('SELECT key, value FROM settings').map((r) => [r.key, parseJson(r.value, r.value)]),
     );
     return ctx.json({
-      siteName: 'KALEA',
-      tagline: settings.tagline ?? 'La boutique officielle du jeu',
+      siteName: settings.site_name ?? 'KaleaShop',
+      tagline: settings.tagline ?? 'La boutique gaming officielle',
       supportEmail: settings.support_email ?? 'support@kalea.gg',
       discordInvite: settings.discord_invite ?? null,
       checkoutNote: settings.checkout_note ?? '',
-      legalCompany: settings.legal_company ?? 'KALEA',
+      legalCompany: settings.legal_company ?? 'KaleaShop',
       payments: paymentsStatus(),
       discord: { ...discordStatus(), invite: settings.discord_invite ?? null },
       game: gameStatus(),
@@ -75,7 +77,36 @@ export function publicRoutes(router) {
   }));
 
   /* Catalogue public. */
-  router.get('/api/packs', (ctx) => ctx.json({ packs: listPacks() }));
+  router.get('/api/packs', (ctx) => {
+    const categorySlug = String(ctx.query.category ?? '').trim();
+    if (categorySlug && !getCategoryRow(categorySlug)) throw notFound('Catégorie introuvable.');
+    return ctx.json({ packs: listPacks({ categorySlug: categorySlug || null }) });
+  });
+
+  /* Catégories utilisées au moins par un pack actif (filtres de la boutique). */
+  router.get('/api/categories', (ctx) => ctx.json({ categories: listUsedCategories() }));
+
+  /**
+   * Validation d'un code promo — AUCUN montant n'est envoyé par le client :
+   * on lui renvoie la remise calculée par le serveur sur son sous-total.
+   */
+  router.post('/api/promotions/validate', rateLimit('api', 30), (ctx) => {
+    const { code, subtotalCents } = ctx.body ?? {};
+    const subtotal = Number(subtotalCents);
+    if (!Number.isFinite(subtotal) || subtotal < 0) throw badRequest('Panier invalide.');
+    const result = applyPromotion(String(code ?? ''), Math.round(subtotal));
+    if (!result) return ctx.json({ valid: false });
+    return ctx.json({
+      valid: true,
+      code: result.promotion.code,
+      label: result.promotion.label,
+      discountLabel: result.promotion.discountLabel,
+      discountCents: result.discountCents,
+      discount: (result.discountCents / 100).toFixed(2).replace('.', ','),
+      totalCents: Math.max(0, Math.round(subtotal) - result.discountCents),
+      total: (Math.max(0, Math.round(subtotal) - result.discountCents) / 100).toFixed(2).replace('.', ','),
+    });
+  });
 
   router.get('/api/packs/:idOrSlug', (ctx) => {
     const row = getPack(ctx.params.idOrSlug, { includeInactive: ctx.userRow?.role === 'admin' });

@@ -210,15 +210,17 @@ export function reveal(root = document) {
 /** Compteur animé pour les statistiques. */
 export function countUp(el, target, { prefix = '', suffix = '', duration = 1100 } = {}) {
   const start = performance.now();
-  const from = 0;
+  const fmt = (v) => `${prefix}${Number.isInteger(target) ? Math.round(v) : v.toFixed(1)}${suffix}`;
   const step = (now) => {
     const p = Math.min((now - start) / duration, 1);
     const eased = 1 - Math.pow(1 - p, 3);
-    const value = from + (target - from) * eased;
-    el.textContent = `${prefix}${Number.isInteger(target) ? Math.round(value) : value.toFixed(1)}${suffix}`;
+    el.textContent = fmt(target * eased);
     if (p < 1) requestAnimationFrame(step);
   };
   requestAnimationFrame(step);
+  // Filet de sécurité : dans un onglet en arrière-plan rAF ne se déclenche
+  // jamais — on garantit alors l'affichage de la valeur finale.
+  window.setTimeout(() => { el.textContent = fmt(target); }, duration + 150);
 }
 
 export function accordion(root) {

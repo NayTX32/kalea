@@ -6,7 +6,7 @@ import { get, post, put, del } from '../api.js';
 import { state, setUser } from '../state.js';
 import {
   esc, fmtEUR, fmtDate, fmtRelative, badge, reveal, toastSuccess, toastError,
-  loadingButton, emptyState, modal, confirmDialog, qs, qsa, skeleton, icon, applyTheme,
+  loadingButton, emptyState, modal, confirmDialog, qs, qsa, skeleton, icon, applyTheme, countUp,
 } from '../ui.js';
 import { navigate } from '../router.js';
 
@@ -19,6 +19,8 @@ const NAV = [
   ] },
   { group: 'Ventes', items: [
     { key: 'packs', href: '/admin/packs', label: 'Packs', icon: 'cube' },
+    { key: 'categories', href: '/admin/categories', label: 'Catégories', icon: 'layers' },
+    { key: 'promotions', href: '/admin/promotions', label: 'Promotions', icon: 'tag' },
     { key: 'orders', href: '/admin/commandes', label: 'Commandes', icon: 'receipt' },
     { key: 'payments', href: '/admin/paiements', label: 'Paiements', icon: 'card' },
   ] },
@@ -55,7 +57,7 @@ function shell(activeKey, content) {
 const pageHeader = (title, subtitle = '', actions = '') => `
   <div class="row-between wrap" style="margin-bottom:26px">
     <div>
-      <div class="eyebrow">Dashboard KALEA</div>
+      <div class="eyebrow">Dashboard KaleaShop</div>
       <h1 class="h3">${esc(title)}</h1>
       ${subtitle ? `<p class="muted small" style="margin-top:6px">${subtitle}</p>` : ''}
     </div>
@@ -76,18 +78,21 @@ export async function adminOverviewView() {
       `<a class="btn btn-ghost btn-sm" href="/admin/packs" data-link>Configurer les packs</a>
        <a class="btn btn-primary btn-sm" href="/boutique" data-link>Voir la boutique</a>`)}
 
-    <div class="grid grid-4" style="margin-bottom:26px">
+    <div class="grid grid-stats" style="margin-bottom:26px">
       <div class="stat-card reveal"><div class="stat-label">Chiffre d’affaires net</div>
         <div class="stat-value grad-text">${esc(stats.revenue.net)} €</div>
         <div class="stat-sub">${esc(stats.revenue.gross)} € encaissés · ${esc(stats.revenue.refunded)} € remboursés</div></div>
       <div class="stat-card reveal"><div class="stat-label">Commandes payées</div>
-        <div class="stat-value">${stats.orders.paid}</div>
+        <div class="stat-value"><span data-count="${stats.orders.paid}">0</span></div>
         <div class="stat-sub">${stats.orders.total} au total · ${stats.orders.pending} en attente</div></div>
-      <div class="stat-card reveal"><div class="stat-label">Joueurs</div>
-        <div class="stat-value">${stats.users.total}</div>
+      <div class="stat-card reveal"><div class="stat-label">Utilisateurs</div>
+        <div class="stat-value"><span data-count="${stats.users.total}">0</span></div>
         <div class="stat-sub">${stats.users.discordLinked} avec Discord connecté</div></div>
+      <div class="stat-card reveal"><div class="stat-label">Produits en vente</div>
+        <div class="stat-value"><span data-count="${stats.packs.filter((p) => p.active).length}">0</span></div>
+        <div class="stat-sub">${stats.packs.length} pack(s) au catalogue</div></div>
       <div class="stat-card reveal"><div class="stat-label">Livraisons</div>
-        <div class="stat-value">${stats.deliveries.delivered}</div>
+        <div class="stat-value"><span data-count="${stats.deliveries.delivered}">0</span></div>
         <div class="stat-sub">${stats.deliveries.errors} erreur(s) · ${stats.deliveries.running} en cours</div></div>
     </div>
 
@@ -145,7 +150,17 @@ export async function adminOverviewView() {
       </div>
     </div>`);
 
-  return { title: 'Dashboard', html, mount(root) { reveal(root); } };
+  return {
+    title: 'Dashboard',
+    html,
+    mount(root) {
+      reveal(root);
+      // Compteurs animés sur les cartes de statistiques.
+      root.querySelectorAll('[data-count]').forEach((el) => {
+        countUp(el, Number(el.dataset.count), { suffix: el.dataset.suffix ?? '' });
+      });
+    },
+  };
 }
 
 /* ---------------------------- Statistiques ----------------------------- */
@@ -221,6 +236,16 @@ function packFormFields(pack = {}) {
     <div class="form-grid">
       <div class="field"><label class="label">Prix (€)</label><input class="input" name="price" type="number" step="0.01" min="0" value="${((pack.priceCents ?? 0) / 100).toFixed(2)}" required /></div>
       <div class="field"><label class="label">URL de l’image</label><input class="input" name="imageUrl" value="${esc(pack.imageUrl ?? '')}" placeholder="https://…" /></div>
+    </div>
+    <div class="form-grid">
+      <div class="field"><label class="label">Catégorie</label>
+        <select class="select" name="categoryId" id="categorySelect">
+          <option value="">— Sans catégorie —</option>
+        </select>
+        <span class="hint">Classée depuis « Catégories » du menu admin.</span></div>
+      <div class="field"><label class="label">Stock restant</label>
+        <input class="input" name="stock" type="number" step="1" min="-1" value="${pack.stock ?? -1}" />
+        <span class="hint">-1 = illimité · 0 = épuisé (vente bloquée).</span></div>
     </div>
     <div class="field"><label class="label">Avantages affichés (un par ligne)</label>
       <textarea class="textarea" name="features" style="min-height:90px">${esc((pack.features ?? []).join('\n'))}</textarea></div>
@@ -306,6 +331,8 @@ function readPackForm(form) {
     price: Number(fd.price),
     imageUrl: fd.imageUrl,
     features: String(fd.features ?? '').split('\n').map((s) => s.trim()).filter(Boolean),
+    categoryId: fd.categoryId || null,
+    stock: fd.stock === '' || fd.stock === undefined ? -1 : Number(fd.stock),
     discordRoleId: fd.discordRoleIdManual || fd.discordRoleId || '',
     discordRoleName: fd.discordRoleName,
     rewards,
@@ -316,6 +343,7 @@ function readPackForm(form) {
 
 async function openPackModal(pack = null) {
   const rolesPromise = get('/api/admin/discord/roles').catch(() => ({ roles: [] }));
+  const categoriesPromise = get('/api/admin/categories').catch(() => ({ categories: [] }));
   const instance = modal({
     title: pack ? `Modifier « ${pack.name} »` : 'Nouveau pack',
     body: `<form id="packForm">${packFormFields(pack ?? {})}</form>`,
@@ -366,6 +394,28 @@ async function openPackModal(pack = null) {
       select.appendChild(option);
     }
   }
+
+  // Remplissage du sélecteur de catégories.
+  const categories = await categoriesPromise;
+  const categorySelect = instance.root.querySelector('#categorySelect');
+  if (categorySelect) {
+    for (const category of categories.categories ?? []) {
+      if (!category.active) continue;
+      const option = document.createElement('option');
+      option.value = category.id;
+      option.textContent = `${category.emoji ?? ''} ${category.name}`.trim();
+      if ((pack?.categoryId ?? null) === category.id) option.selected = true;
+      categorySelect.appendChild(option);
+    }
+    if (pack?.categoryId && !categorySelect.selectedOptions.length) {
+      // La catégorie a été désactivée : on conserve la valeur pour ne rien perdre.
+      const option = document.createElement('option');
+      option.value = pack.categoryId;
+      option.textContent = `${pack.category?.emoji ?? ''} ${pack.category?.name ?? 'Catégorie inconnue'}`.trim();
+      option.selected = true;
+      categorySelect.appendChild(option);
+    }
+  }
 }
 
 export async function adminPacksView() {
@@ -376,12 +426,14 @@ export async function adminPacksView() {
     ${packs.length ? `
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Pack</th><th>Prix</th><th>Rôle Discord</th><th>Récompenses</th><th>Statut</th><th>Ordre</th><th></th></tr></thead>
+        <thead><tr><th>Pack</th><th>Prix</th><th>Catégorie</th><th>Stock</th><th>Rôle Discord</th><th>Récompenses</th><th>Statut</th><th>Ordre</th><th></th></tr></thead>
         <tbody>
           ${packs.map((p) => `
             <tr>
               <td><strong>${esc(p.emoji)} ${esc(p.name)}</strong><div class="tiny">${esc(p.tagline ?? '')}</div></td>
               <td><strong>${esc(p.price)} €</strong></td>
+              <td>${p.category ? `<span class="badge">${esc(p.category.emoji ?? '')} ${esc(p.category.name)}</span>` : '<span class="tiny">Sans catégorie</span>'}</td>
+              <td>${p.stock < 0 ? '<span class="tiny">Illimité</span>' : p.stock === 0 ? badge('failed', 'Épuisé') : badge('active', `${p.stock}`)}</td>
               <td>${p.discordRole?.name ? `<span class="badge">${esc(p.discordRole.name)}</span>` : '<span class="tiny">Aucun</span>'}</td>
               <td class="tiny">${(p.rewardSummary ?? []).length} élément(s)</td>
               <td>${badge(p.active ? 'active' : 'expired', p.active ? 'En vente' : 'Masqué')}</td>
@@ -406,6 +458,312 @@ export async function adminPacksView() {
         btn.addEventListener('click', () => {
           const pack = packs.find((p) => p.id === btn.dataset.edit);
           if (pack) openPackModal(pack);
+        });
+      });
+    },
+  };
+}
+
+/* ------------------------------ Catégories ------------------------------ */
+
+function categoryFormFields(category = {}) {
+  return `
+    <div class="form-grid">
+      <div class="field"><label class="label">Nom</label><input class="input" name="name" value="${esc(category.name ?? '')}" required placeholder="Avantages" /></div>
+      <div class="field"><label class="label">Slug (URL)</label><input class="input" name="slug" value="${esc(category.slug ?? '')}" placeholder="avantages" /></div>
+    </div>
+    <div class="form-grid">
+      <div class="field"><label class="label">Emoji</label><input class="input" name="emoji" value="${esc(category.emoji ?? '🗂️')}" /></div>
+      <div class="field"><label class="label">Ordre d’affichage</label><input class="input" name="sortOrder" type="number" value="${category.sortOrder ?? 0}" /></div>
+    </div>
+    <div class="field"><label class="label">Description (facultative)</label>
+      <textarea class="textarea" name="description" style="min-height:70px">${esc(category.description ?? '')}</textarea></div>
+    <div class="field"><label class="label">Visible en boutique</label>
+      <select class="select" name="active">
+        <option value="1" ${category.active !== false ? 'selected' : ''}>Oui</option>
+        <option value="0" ${category.active === false ? 'selected' : ''}>Non</option>
+      </select></div>
+    <div class="form-error" id="categoryError"></div>`;
+}
+
+function openCategoryModal(category = null) {
+  const instance = modal({
+    title: category ? `Modifier « ${category.name} »` : 'Nouvelle catégorie',
+    body: `<form id="categoryForm">${categoryFormFields(category ?? {})}</form>`,
+    actions: [
+      { label: 'Annuler', className: 'btn-ghost' },
+      { label: category ? 'Enregistrer' : 'Créer', className: 'btn-primary', keepOpen: true, onClick: async ({ close }) => {
+        const form = instance.root.querySelector('#categoryForm');
+        const errorEl = instance.root.querySelector('#categoryError');
+        errorEl.textContent = '';
+        const fd = Object.fromEntries(new FormData(form).entries());
+        try {
+          const payload = {
+            name: fd.name,
+            slug: fd.slug,
+            emoji: fd.emoji,
+            description: fd.description,
+            sortOrder: Number(fd.sortOrder ?? 0),
+            active: fd.active === '1',
+          };
+          if (category) await put(`/api/admin/categories/${category.id}`, payload);
+          else await post('/api/admin/categories', payload);
+          toastSuccess(category ? 'Catégorie mise à jour.' : `Catégorie « ${payload.name} » créée.`);
+          close();
+          navigate('/admin/categories', { replace: true });
+        } catch (error) { errorEl.textContent = error.message; return false; }
+        return false;
+      } },
+    ],
+  });
+}
+
+export async function adminCategoriesView() {
+  const { categories } = await get('/api/admin/categories');
+  const html = shell('categories', `
+    ${pageHeader('Catégories', 'Classez vos packs : les catégories deviennent les filtres de la boutique',
+      '<button class="btn btn-primary btn-sm" id="btnNewCategory">+ Nouvelle catégorie</button>')}
+    ${categories.length ? `
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Catégorie</th><th>Slug</th><th>Packs</th><th>Ordre</th><th>Statut</th><th></th></tr></thead>
+        <tbody>
+          ${categories.map((c) => `
+            <tr>
+              <td><strong>${esc(c.emoji)} ${esc(c.name)}</strong><div class="tiny">${esc(c.description ?? '')}</div></td>
+              <td class="mono small">${esc(c.slug)}</td>
+              <td>${c.packCount}</td>
+              <td>${c.sortOrder}</td>
+              <td>${badge(c.active ? 'active' : 'expired', c.active ? 'Visible' : 'Masquée')}</td>
+              <td class="actions">
+                <button class="btn btn-ghost btn-sm" data-edit="${esc(c.id)}">Modifier</button>
+                <button class="btn btn-ghost btn-sm" data-delete="${esc(c.id)}">Supprimer</button>
+              </td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>` : emptyState('layers', 'Aucune catégorie', 'Créez une catégorie pour organiser vos packs.')}
+
+    <div class="notice notice-info" style="margin-top:22px">
+      <span>💡</span>
+      <div class="small">La suppression d’une catégorie ne supprime jamais les packs : ils repassent en « Sans catégorie ». Seules les catégories utilisées par un pack actif apparaissent dans les filtres de la boutique.</div>
+    </div>`);
+
+  return {
+    title: 'Catégories — Admin', html,
+    mount(root) {
+      reveal(root);
+      root.querySelector('#btnNewCategory')?.addEventListener('click', () => openCategoryModal());
+      root.querySelectorAll('[data-edit]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const category = categories.find((c) => c.id === btn.dataset.edit);
+          if (category) openCategoryModal(category);
+        });
+      });
+      root.querySelectorAll('[data-delete]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const category = categories.find((c) => c.id === btn.dataset.delete);
+          if (!category) return;
+          const ok = await confirmDialog(
+            `Supprimer « ${category.name} » ? ${category.packCount ? `${category.packCount} pack(s) repasseront en « Sans catégorie ».` : 'Aucun pack n’est concerné.'}`,
+            { danger: true, confirmLabel: 'Supprimer' },
+          );
+          if (!ok) return;
+          try {
+            await del(`/api/admin/categories/${category.id}`);
+            toastSuccess('Catégorie supprimée.');
+            navigate('/admin/categories', { replace: true });
+          } catch (error) { toastError(error.message); }
+        });
+      });
+    },
+  };
+}
+
+/* ------------------------------ Promotions ----------------------------- */
+
+/** ms → valeur `datetime-local` (heure locale). */
+const toLocalInput = (ms) => {
+  if (!ms) return '';
+  const d = new Date(Number(ms));
+  const shifted = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+  return shifted.toISOString().slice(0, 16);
+};
+/** `datetime-local` → ms, ou null. */
+const fromLocalInput = (value) => (value ? new Date(value).getTime() : null);
+
+function promoFormFields(promo = {}) {
+  const isFixed = promo.kind === 'fixed';
+  return `
+    <div class="form-grid">
+      <div class="field"><label class="label">Code</label>
+        <input class="input mono" name="code" value="${esc(promo.code ?? '')}" required placeholder="BIENVENUE10" style="text-transform:uppercase" />
+        <span class="hint">Saisi par le client dans le panier (insensible à la casse).</span></div>
+      <div class="field"><label class="label">Libellé interne (facultatif)</label>
+        <input class="input" name="label" value="${esc(promo.label ?? '')}" placeholder="Soldes d’automne" /></div>
+    </div>
+    <div class="form-grid">
+      <div class="field"><label class="label">Type de remise</label>
+        <select class="select" name="kind" id="promoKind">
+          <option value="percent" ${!isFixed ? 'selected' : ''}>Pourcentage (%)</option>
+          <option value="fixed" ${isFixed ? 'selected' : ''}>Montant fixe (€)</option>
+        </select></div>
+      <div class="field"><label class="label">Valeur</label>
+        <input class="input" name="value" id="promoValue" type="number" step="0.01" min="0.01"
+          value="${isFixed ? ((promo.value ?? 0) / 100).toFixed(2) : (promo.value ?? '')}" required />
+        <span class="hint" id="promoValueHint">${isFixed ? 'Montant retiré du panier.' : 'Pourcentage retiré du panier (1 à 99).'}</span></div>
+    </div>
+    <div class="form-grid">
+      <div class="field"><label class="label">Panier minimum (€)</label>
+        <input class="input" name="minAmount" type="number" step="0.01" min="0"
+          value="${((promo.minAmountCents ?? 0) / 100).toFixed(2)}" /></div>
+      <div class="field"><label class="label">Utilisations max.</label>
+        <input class="input" name="maxUses" type="number" min="1" value="${promo.maxUses ?? ''}" placeholder="Illimité" />
+        <span class="hint">Vide = illimité.</span></div>
+    </div>
+    <div class="form-grid">
+      <div class="field"><label class="label">Début (facultatif)</label>
+        <input class="input" name="startsAt" type="datetime-local" value="${toLocalInput(promo.startsAt)}" /></div>
+      <div class="field"><label class="label">Fin (facultative)</label>
+        <input class="input" name="endsAt" type="datetime-local" value="${toLocalInput(promo.endsAt)}" /></div>
+    </div>
+    <div class="field"><label class="label">Actif</label>
+      <select class="select" name="active">
+        <option value="1" ${promo.active !== false ? 'selected' : ''}>Oui</option>
+        <option value="0" ${promo.active === false ? 'selected' : ''}>Non</option>
+      </select></div>
+    <div class="form-error" id="promoError"></div>`;
+}
+
+function readPromoForm(form) {
+  const fd = Object.fromEntries(new FormData(form).entries());
+  const kind = fd.kind === 'fixed' ? 'fixed' : 'percent';
+  const raw = Number(fd.value);
+  if (!Number.isFinite(raw) || raw <= 0) throw new Error('La valeur de la remise doit être positive.');
+  const value = kind === 'percent' ? Math.round(raw) : Math.round(raw * 100);
+  if (kind === 'percent' && (value < 1 || value > 99)) {
+    throw new Error('Le pourcentage doit être compris entre 1 et 99.');
+  }
+  const minRaw = Number(fd.minAmount || 0);
+  if (!Number.isFinite(minRaw) || minRaw < 0) throw new Error('Le panier minimum est invalide.');
+  return {
+    code: String(fd.code ?? '').trim(),
+    label: fd.label,
+    kind,
+    value,
+    minAmountCents: Math.round(minRaw * 100),
+    maxUses: fd.maxUses === '' ? null : Number(fd.maxUses),
+    startsAt: fromLocalInput(fd.startsAt),
+    endsAt: fromLocalInput(fd.endsAt),
+    active: fd.active === '1',
+  };
+}
+
+function openPromoModal(promo = null) {
+  const instance = modal({
+    title: promo ? `Modifier le code « ${promo.code} »` : 'Nouveau code promotionnel',
+    body: `<form id="promoForm">${promoFormFields(promo ?? {})}</form>`,
+    actions: [
+      { label: 'Annuler', className: 'btn-ghost' },
+      { label: promo ? 'Enregistrer' : 'Créer le code', className: 'btn-primary', keepOpen: true, onClick: async ({ close }) => {
+        const form = instance.root.querySelector('#promoForm');
+        const errorEl = instance.root.querySelector('#promoError');
+        errorEl.textContent = '';
+        let payload;
+        try { payload = readPromoForm(form); }
+        catch (error) { errorEl.textContent = error.message; return false; }
+        try {
+          if (promo) await put(`/api/admin/promotions/${promo.id}`, payload);
+          else await post('/api/admin/promotions', payload);
+          toastSuccess(promo ? 'Code promotionnel mis à jour.' : `Code « ${payload.code} » créé.`);
+          close();
+          navigate('/admin/promotions', { replace: true });
+        } catch (error) { errorEl.textContent = error.message; return false; }
+        return false;
+      } },
+    ],
+  });
+
+  // Le champ « valeur » change d'unité selon le type choisi.
+  const kindSelect = instance.root.querySelector('#promoKind');
+  const valueInput = instance.root.querySelector('#promoValue');
+  const hint = instance.root.querySelector('#promoValueHint');
+  kindSelect?.addEventListener('change', () => {
+    const fixed = kindSelect.value === 'fixed';
+    valueInput.step = fixed ? '0.01' : '1';
+    valueInput.max = fixed ? '' : '99';
+    hint.textContent = fixed ? 'Montant retiré du panier.' : 'Pourcentage retiré du panier (1 à 99).';
+  });
+}
+
+export async function adminPromotionsView() {
+  const { promotions } = await get('/api/admin/promotions');
+  const nowMs = Date.now();
+  const period = (p) => {
+    const parts = [];
+    if (p.startsAt) parts.push(`dès le ${fmtDate(p.startsAt)}`);
+    if (p.endsAt) parts.push(`jusqu’au ${fmtDate(p.endsAt)}`);
+    return parts.join(' ') || 'Toujours';
+  };
+
+  const html = shell('promotions', `
+    ${pageHeader('Promotions', 'Codes de réduction appliqués au panier — validation et calcul 100 % côté serveur',
+      '<button class="btn btn-primary btn-sm" id="btnNewPromo">+ Nouveau code</button>')}
+    ${promotions.length ? `
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Code</th><th>Réduction</th><th>Panier min.</th><th>Utilisations</th><th>Période</th><th>Statut</th><th></th></tr></thead>
+        <tbody>
+          ${promotions.map((p) => {
+            const inactive = !p.active || p.expired || (p.endsAt && p.endsAt < nowMs)
+              || (p.maxUses !== null && p.usedCount >= p.maxUses);
+            return `
+            <tr>
+              <td><strong class="mono">${esc(p.code)}</strong><div class="tiny">${esc(p.label ?? '')}</div></td>
+              <td><strong>${esc(p.discountLabel)}</strong></td>
+              <td class="tiny">${p.minAmountCents ? fmtEUR(p.minAmountCents) : '—'}</td>
+              <td class="tiny">${p.usedCount}${p.maxUses !== null ? ` / ${p.maxUses}` : ' / ∞'}</td>
+              <td class="tiny">${period(p)}</td>
+              <td>${inactive
+                ? badge(p.expired ? 'expired' : 'failed', p.expired ? 'Expiré' : (!p.active ? 'Inactif' : 'Épuisé'))
+                : badge('active', 'Actif')}</td>
+              <td class="actions">
+                <button class="btn btn-ghost btn-sm" data-edit="${esc(p.id)}">Modifier</button>
+                <button class="btn btn-ghost btn-sm" data-delete="${esc(p.id)}">Supprimer</button>
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>` : emptyState('tag', 'Aucun code promotionnel', 'Créez votre premier code pour lancer une opération commerciale.')}
+
+    <div class="notice notice-info" style="margin-top:22px">
+      <span>💡</span>
+      <div class="small">Les remises sont recalculées par le serveur au moment de la commande : le montant affiché dans le navigateur n’est qu’une estimation. Une utilisation est comptée à la création de la commande qui porte le code.</div>
+    </div>`);
+
+  return {
+    title: 'Promotions — Admin', html,
+    mount(root) {
+      reveal(root);
+      root.querySelector('#btnNewPromo')?.addEventListener('click', () => openPromoModal());
+      root.querySelectorAll('[data-edit]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const promo = promotions.find((p) => p.id === btn.dataset.edit);
+          if (promo) openPromoModal(promo);
+        });
+      });
+      root.querySelectorAll('[data-delete]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const promo = promotions.find((p) => p.id === btn.dataset.delete);
+          if (!promo) return;
+          const ok = await confirmDialog(`Supprimer le code « ${promo.code} » ? Les commandes déjà créées conservent leur remise.`, { danger: true, confirmLabel: 'Supprimer' });
+          if (!ok) return;
+          try {
+            await del(`/api/admin/promotions/${promo.id}`);
+            toastSuccess('Code promotionnel supprimé.');
+            navigate('/admin/promotions', { replace: true });
+          } catch (error) { toastError(error.message); }
         });
       });
     },
@@ -446,7 +804,7 @@ export async function adminOrdersView({ query }) {
               <td class="mono small">${esc(o.number)}</td>
               <td>${esc(o.user?.name ?? '—')}<div class="tiny">${esc(o.user?.email ?? '')}</div></td>
               <td>${esc(o.packName ?? '—')}</td>
-              <td><strong>${esc(o.amount)} €</strong>${o.refundedCents ? `<div class="tiny">remb. ${(o.refundedCents / 100).toFixed(2)} €</div>` : ''}</td>
+              <td><strong>${esc(o.amount)} €</strong>${o.discountCents ? `<div class="tiny">${esc(o.promoCode)} · −${esc(o.discount)} €</div>` : ''}${o.refundedCents ? `<div class="tiny">remb. ${esc(fmtEUR(o.refundedCents))}</div>` : ''}</td>
               <td>${badge(o.status)}</td>
               <td>${o.delivery ? badge(o.delivery.status) : '<span class="tiny">—</span>'}</td>
               <td class="tiny">${fmtDate(o.createdAt)}</td>
@@ -492,6 +850,7 @@ async function openOrderModal(orderId) {
     body: `
       <div class="row wrap" style="gap:8px;margin-bottom:14px">
         ${badge(order.status)} <span class="badge">${esc(order.amount)} €</span>
+        ${order.promoCode ? `<span class="badge">Promo ${esc(order.promoCode)} · −${esc(order.discount)} €</span>` : ''}
         <span class="badge">${esc(order.provider)}</span>
         <span class="badge">${esc(order.user?.displayName ?? '')}</span>
         <span class="badge">${esc(order.user?.email ?? '')}</span>
@@ -846,7 +1205,7 @@ export async function adminGameView() {
     <div class="card reveal">
       <div class="card-title">Comment le jeu reçoit les récompenses</div>
       <p class="muted small" style="margin-top:10px">
-        Après chaque paiement confirmé, KALEA envoie une requête signée à votre serveur de jeu
+        Après chaque paiement confirmé, KaleaShop envoie une requête signée à votre serveur de jeu
         avec l’identifiant unique de transaction. Le serveur doit rejeter toute transaction déjà traitée.
       </p>
       <code class="code" style="margin-top:14px">${esc(example)}</code>
@@ -971,7 +1330,7 @@ export async function adminSettingsView() {
         <div class="card-title">Identité du site</div>
         <form id="settingsForm" class="stack" style="margin-top:16px">
           <div class="field"><label class="label">Nom du site</label>
-            <input class="input" name="site_name" value="${esc(s.site_name ?? 'KALEA')}" /></div>
+            <input class="input" name="site_name" value="${esc(s.site_name ?? 'KaleaShop')}" /></div>
           <div class="field"><label class="label">Accroche</label>
             <input class="input" name="tagline" value="${esc(s.tagline ?? '')}" /></div>
           <div class="form-grid">
@@ -1099,7 +1458,7 @@ export function adminGateView(ctx) {
           <div class="gate-ribbon">🔒 Zone protégée</div>
           <div class="gate-logo"><img src="/assets/img/logo.png" alt="" width="76" height="76" /></div>
           <div class="eyebrow" style="justify-content:center">Accès restreint</div>
-          <h1 class="h2">Administration <span class="grad-text">KALEA</span></h1>
+          <h1 class="h2">Administration <span class="grad-text">KaleaShop</span></h1>
           <p class="muted small center" style="margin-top:10px;max-width:44ch">
             ${denied
               ? 'Cette zone est réservée aux comptes administrateurs. Entrez le mot de passe pour la déverrouiller.'

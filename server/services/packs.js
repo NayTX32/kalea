@@ -2,6 +2,10 @@
 import { all, get, run, newId, now, parseJson, toRow } from '../db.js';
 import { badRequest, notFound, conflict } from '../lib/errors.js';
 import { str, int, bool, slugify, sanitizeRewards } from '../lib/validate.js';
+import { resolveCategoryId } from './categories.js';
+
+/** Stock : -1 = illimité (valeur par défaut d'un pack numérique). */
+export const STOCK_UNLIMITED = -1;
 
 export const DEFAULT_FEATURES_BY_SLUG = {
   base: ['Lancement du jeu plus rapide', 'Changement de pseudo', 'Rôle Discord Pack de Base'],
@@ -10,9 +14,10 @@ export const DEFAULT_FEATURES_BY_SLUG = {
 };
 
 /** Transforme une ligne SQL en objet public (prix en euros, JSON parsés). */
-export function serializePack(row, { publicView = true } = {}) {
+export function serializePack(row, { publicView = true, category = undefined } = {}) {
   if (!row) return null;
   const rewards = parseJson(row.game_rewards, {}) ?? {};
+  const stock = row.stock ?? STOCK_UNLIMITED;
   const pack = {
     id: row.id,
     slug: row.slug,
@@ -27,6 +32,13 @@ export function serializePack(row, { publicView = true } = {}) {
     currency: row.currency,
     badge: row.badge,
     features: parseJson(row.features, []) ?? [],
+    /** Catégorie produit (null = « Sans catégorie »). */
+    categoryId: row.category_id ?? null,
+    category: resolveCategory(row, category),
+    /** -1 = illimité, 0 = épuisé, n>0 = n unités restantes. */
+    stock,
+    stockLabel: stock < 0 ? 'Illimité' : stock === 0 ? 'Épuisé' : `${stock} restant${stock > 1 ? 's' : ''}`,
+    inStock: stock !== 0,
     discordRole: {
       id: row.discord_role_id || null,
       name: row.discord_role_name || null,
@@ -42,8 +54,18 @@ export function serializePack(row, { publicView = true } = {}) {
   if (publicView) {
     delete pack.discordRole.id;
     delete pack.rewards;
+    delete pack.categoryId; // l'admin dispose du détail, le public du libellé
   }
   return pack;
+}
+
+/** Résout la catégorie d'un pack (jointure déjà faite, sinon requête unique). */
+function resolveCategory(row, preloaded) {
+  if (preloaded !== undefined) return preloaded;
+  if (!row.category_id) return null;
+  const cat = get('SELECT * FROM categories WHERE id = ?', row.category_id);
+  if (!cat) return null;
+  return { id: cat.id, slug: cat.slug, name: cat.name, emoji: cat.emoji, active: cat.active === 1 };
 }
 
 export function summarizeRewards(rewards = {}) {
@@ -57,11 +79,32 @@ export function summarizeRewards(rewards = {}) {
   return parts;
 }
 
-export function listPacks({ includeInactive = false } = {}) {
-  const rows = includeInactive
-    ? all('SELECT * FROM packs ORDER BY sort_order ASC, created_at ASC')
-    : all('SELECT * FROM packs WHERE active = 1 ORDER BY sort_order ASC, created_at ASC');
-  return rows.map((r) => serializePack(r, { publicView: !includeInactive }));
+/**
+ * Liste des packs. `categorySlug` filtre sur une catégorie (boutique publique) ;
+ * `category` précharge la catégorie pour éviter une requête par ligne.
+ */
+export function listPacks({ includeInactive = false, categorySlug = null } = {}) {
+  const where = [];
+  const params = [];
+  if (!includeInactive) where.push('p.active = 1');
+  if (categorySlug) {
+    where.push('c.slug = ? AND c.active = 1');
+    params.push(categorySlug);
+  }
+  const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const rows = all(
+    `SELECT p.*, c.slug AS cat_slug, c.name AS cat_name, c.emoji AS cat_emoji, c.active AS cat_active
+     FROM packs p LEFT JOIN categories c ON c.id = p.category_id
+     ${clause}
+     ORDER BY p.sort_order ASC, p.created_at ASC`,
+    ...params,
+  );
+  return rows.map((r) => serializePack(r, {
+    publicView: !includeInactive,
+    category: r.cat_slug
+      ? { id: r.category_id, slug: r.cat_slug, name: r.cat_name, emoji: r.cat_emoji, active: r.cat_active === 1 }
+      : null,
+  }));
 }
 
 export function getPackRow(idOrSlug) {
@@ -91,6 +134,23 @@ export function sanitizePackInput(body, { existing = null } = {}) {
     .filter(Boolean)
     .slice(0, 30);
 
+  // Catégorie : la clé `categoryId` (présente même à null) fait foi ; sinon
+  // on retombe sur l'objet `category` déjà sérialisé (mise à jour partielle).
+  let categoryRef = null;
+  if (Object.prototype.hasOwnProperty.call(body, 'categoryId')) {
+    categoryRef = body.categoryId;
+  } else if (body.category && typeof body.category === 'object') {
+    categoryRef = body.category.id ?? null;
+  } else {
+    categoryRef = body.category ?? null;
+  }
+  const categoryId = resolveCategoryId(categoryRef);
+
+  // Stock : -1 = illimité, 0 = épuisé, sinon nombre d'unités restantes.
+  const stock = int(body.stock ?? STOCK_UNLIMITED, {
+    field: 'stock', min: -1, max: 10_000_000, fallback: STOCK_UNLIMITED,
+  });
+
   return {
     slug,
     name,
@@ -102,6 +162,8 @@ export function sanitizePackInput(body, { existing = null } = {}) {
     currency: 'EUR',
     badge: str(body.badge ?? '', { field: 'badge', max: 30, required: false }),
     features: toRow(features),
+    category_id: categoryId,
+    stock,
     discord_role_id: str(body.discordRoleId ?? '', { field: 'identifiant de rôle Discord', max: 40, required: false }),
     discord_role_name: str(body.discordRoleName ?? '', { field: 'nom du rôle Discord', max: 80, required: false }),
     game_rewards: toRow(sanitizeRewards(body.rewards)),
@@ -116,11 +178,13 @@ export function createPack(body) {
   const id = newId('pack');
   run(
     `INSERT INTO packs (id, slug, name, emoji, tagline, description, image_url, price_cents, currency,
-       badge, features, discord_role_id, discord_role_name, game_rewards, active, sort_order, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       badge, features, category_id, stock, discord_role_id, discord_role_name, game_rewards,
+       active, sort_order, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     id, data.slug, data.name, data.emoji, data.tagline, data.description, data.imageUrl,
-    data.price_cents, data.currency, data.badge, data.features, data.discord_role_id,
-    data.discord_role_name, data.game_rewards, data.active, data.sort_order, now(), data.updated_at,
+    data.price_cents, data.currency, data.badge, data.features, data.category_id, data.stock,
+    data.discord_role_id, data.discord_role_name, data.game_rewards, data.active, data.sort_order,
+    now(), data.updated_at,
   );
   return serializePack(getPack(id, { includeInactive: true }), { publicView: false });
 }
@@ -130,13 +194,34 @@ export function updatePack(id, body) {
   const data = sanitizePackInput({ ...serializePack(existing, { publicView: false }), ...body }, { existing });
   run(
     `UPDATE packs SET slug=?, name=?, emoji=?, tagline=?, description=?, image_url=?, price_cents=?,
-       badge=?, features=?, discord_role_id=?, discord_role_name=?, game_rewards=?, active=?, sort_order=?, updated_at=?
+       badge=?, features=?, category_id=?, stock=?, discord_role_id=?, discord_role_name=?,
+       game_rewards=?, active=?, sort_order=?, updated_at=?
      WHERE id = ?`,
     data.slug, data.name, data.emoji, data.tagline, data.description, data.imageUrl, data.price_cents,
-    data.badge, data.features, data.discord_role_id, data.discord_role_name, data.game_rewards,
-    data.active, data.sort_order, data.updated_at, existing.id,
+    data.badge, data.features, data.category_id, data.stock, data.discord_role_id, data.discord_role_name,
+    data.game_rewards, data.active, data.sort_order, data.updated_at, existing.id,
   );
   return serializePack(getPack(existing.id, { includeInactive: true }), { publicView: false });
+}
+
+/**
+ * Décrémente le stock après un paiement confirmé.
+ * Un stock illimité (-1) ou déjà à 0 n'est jamais modifié : impossible de
+ * partir sous zéro même en cas d'événement webhook dupliqué (garde SQL).
+ */
+export function consumeStock(packId, qty = 1) {
+  return run(
+    'UPDATE packs SET stock = stock - ? WHERE id = ? AND stock >= ?',
+    qty, packId, qty,
+  ).changes;
+}
+
+/** Ré-incrémente le stock lors d'un remboursement complet (jamais sous -1). */
+export function releaseStock(packId, qty = 1) {
+  return run(
+    'UPDATE packs SET stock = stock + ? WHERE id = ? AND stock >= 0',
+    qty, packId,
+  ).changes;
 }
 
 export function deletePack(id) {

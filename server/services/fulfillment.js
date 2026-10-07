@@ -13,7 +13,7 @@
 import { get, all, run, newId, now, parseJson, toRow, transaction } from '../db.js';
 import { config } from '../config.js';
 import { log, audit } from '../lib/logger.js';
-import { getOrderRow, updateOrder } from './orders.js';
+import { getOrderRow, getOrderItems, updateOrder } from './orders.js';
 import { botAddRole, botRemoveRole } from './discord.js';
 import { grantRewards, revokeRewards } from './gameapi.js';
 
@@ -82,22 +82,35 @@ export function rewardLedger(snapshot) {
   return rows;
 }
 
-function buildSteps(order, snapshot, user) {
+/**
+ * Étapes de livraison, un bloc par article du panier.
+ * Commande simple → clés historiques inchangées (discord_role, game_rewards,
+ * activation) ; panier multi-articles → clés suffixées par pack pour que
+ * chaque article garde son propre état lors d'une relance.
+ */
+function buildSteps(order, items, user) {
   const steps = [];
-  const roleId = snapshot.discordRoleId || config.discord.roleBase ||
-    (snapshot.slug === 'full-locker' ? config.discord.roleFullLocker :
-      snapshot.slug === 'moder' ? config.discord.roleModer : '');
-  steps.push({
-    key: 'discord_role',
-    label: roleId ? `Rôle Discord « ${snapshot.discordRoleName || 'Pack'} »` : 'Rôle Discord',
-    roleId: roleId || null,
-    status: STEP_STATUS.PENDING,
-  });
-  const ledger = rewardLedger(snapshot);
-  if (ledger.length) {
-    steps.push({ key: 'game_rewards', label: `Récompenses dans le jeu (${ledger.length})`, status: STEP_STATUS.PENDING });
+  const multi = items.length > 1;
+  for (const item of items) {
+    const { packId, snapshot } = item;
+    const suffix = multi ? `:${packId}` : '';
+    const prefix = multi ? `${snapshot?.name ?? packId} · ` : '';
+    const roleId = snapshot?.discordRoleId || config.discord.roleBase ||
+      (snapshot?.slug === 'full-locker' ? config.discord.roleFullLocker :
+        snapshot?.slug === 'moder' ? config.discord.roleModer : '');
+    steps.push({
+      key: `discord_role${suffix}`,
+      packId,
+      label: roleId ? `${prefix}Rôle Discord « ${snapshot?.discordRoleName || 'Pack'} »` : `${prefix}Rôle Discord`,
+      roleId: roleId || null,
+      status: STEP_STATUS.PENDING,
+    });
+    const ledger = rewardLedger(snapshot);
+    if (ledger.length) {
+      steps.push({ key: `game_rewards${suffix}`, packId, label: `${prefix}Récompenses dans le jeu (${ledger.length})`, status: STEP_STATUS.PENDING });
+    }
+    steps.push({ key: `activation${suffix}`, packId, label: `${prefix}Activation du pack sur le compte`, status: STEP_STATUS.PENDING });
   }
-  steps.push({ key: 'activation', label: 'Activation du pack sur le compte', status: STEP_STATUS.PENDING });
   return steps;
 }
 
@@ -128,8 +141,7 @@ async function runFulfillment(orderId, trigger, force) {
   const user = get('SELECT * FROM users WHERE id = ?', order.user_id);
   if (!user) return { status: 'error', message: 'Utilisateur introuvable' };
   const snapshot = parseJson(order.pack_snapshot, {}) ?? {};
-  const packRow = get('SELECT * FROM packs WHERE id = ?', order.pack_id);
-  const pack = packRow ? parseJson(packRow.game_rewards, {}) : {};
+  const items = getOrderItems(order.id);
 
   // 1. Création (ou récupération) de la transaction unique de la commande.
   let delivery = getDelivery(orderId);
@@ -150,7 +162,7 @@ async function runFulfillment(orderId, trigger, force) {
     delivery = getDelivery(orderId);
   }
 
-  const steps = buildSteps(order, snapshot, user);
+  const steps = buildSteps(order, items, user);
   // Conserve l'état des étapes déjà réussies lors d'une relance.
   for (const step of steps) {
     const previous = (delivery.steps ?? []).find((s) => s.key === step.key);
@@ -173,10 +185,19 @@ async function runFulfillment(orderId, trigger, force) {
     }
     step.status = STEP_STATUS.RUNNING;
     saveDelivery(delivery);
+    /* Chaque étape travaille sur SON article : snapshot et pack du panier
+     * propres à l'étape (identiques à la commande simple d'un seul article). */
+    const item = items.find((entry) => entry.packId === step.packId) ?? { packId: order.pack_id, snapshot };
+    const stepSnapshot = item.snapshot ?? snapshot;
+    const packId = item.packId ?? order.pack_id;
     try {
-      if (step.key === 'discord_role') await stepDiscordRole(step, { order, user, snapshot });
-      else if (step.key === 'game_rewards') await stepGameRewards(step, { order, user, snapshot, txId: delivery.tx_id });
-      else if (step.key === 'activation') stepActivation(step, { order, user, snapshot });
+      if (step.key.startsWith('discord_role')) {
+        await stepDiscordRole(step, { order, user, snapshot: stepSnapshot, packId });
+      } else if (step.key.startsWith('game_rewards')) {
+        await stepGameRewards(step, { order, user, snapshot: stepSnapshot, packId, txId: delivery.tx_id });
+      } else if (step.key.startsWith('activation')) {
+        stepActivation(step, { order, user, snapshot: stepSnapshot, packId });
+      }
     } catch (error) {
       step.status = STEP_STATUS.FAILED;
       step.error = error.message;
@@ -240,7 +261,7 @@ export function cancelScheduledRetry(orderId) {
 
 /* ------------------------------ Étapes ------------------------------ */
 
-async function stepDiscordRole(step, { order, user, snapshot }) {
+async function stepDiscordRole(step, { order, user, snapshot, packId }) {
   if (!step.roleId) {
     step.status = STEP_STATUS.SKIPPED;
     step.reason = 'aucun_role_configure';
@@ -248,7 +269,7 @@ async function stepDiscordRole(step, { order, user, snapshot }) {
   }
   const grantKey = `role:${step.roleId}`;
   const pending = () => markGrantPending({
-    orderId: order.id, userId: user.id, packId: order.pack_id, txId: `tx_${order.id}`,
+    orderId: order.id, userId: user.id, packId, txId: `tx_${order.id}`,
     kind: 'discord_role', key: grantKey, label: step.label, value: step.roleId,
   });
   if (!user.discord_id) {
@@ -280,14 +301,14 @@ async function stepDiscordRole(step, { order, user, snapshot }) {
     return;
   }
   upsertGrant({
-    orderId: order.id, userId: user.id, packId: order.pack_id, txId: `tx_${order.id}`,
+    orderId: order.id, userId: user.id, packId, txId: `tx_${order.id}`,
     kind: 'discord_role', key: `role:${step.roleId}`,
     label: step.label, value: step.roleId,
   });
   step.status = STEP_STATUS.OK;
 }
 
-async function stepGameRewards(step, { order, user, snapshot, txId }) {
+async function stepGameRewards(step, { order, user, snapshot, packId, txId }) {
   const ledger = rewardLedger(snapshot);
   if (!ledger.length) {
     step.status = STEP_STATUS.SKIPPED;
@@ -309,7 +330,7 @@ async function stepGameRewards(step, { order, user, snapshot, txId }) {
   // Toute récompense due est enregistrée (« pending ») tant qu'elle n'est pas livrée :
   // le joueur la voit dans son compte, elle basculera en « granted » à la livraison.
   const markPending = () => missing.forEach((entry) => markGrantPending({
-    orderId: order.id, userId: user.id, packId: order.pack_id, txId,
+    orderId: order.id, userId: user.id, packId, txId,
     kind: entry.kind, key: entry.key, label: entry.label, value: entry.value,
   }));
 
@@ -323,7 +344,7 @@ async function stepGameRewards(step, { order, user, snapshot, txId }) {
   }
 
   const result = await grantRewards({
-    order, user, pack: { id: order.pack_id, slug: snapshot.slug, name: snapshot.name },
+    order, user, pack: { id: packId, slug: snapshot.slug, name: snapshot.name },
     txId, rewards: snapshot.gameRewards ?? {},
   });
 
@@ -348,7 +369,7 @@ async function stepGameRewards(step, { order, user, snapshot, txId }) {
 
   for (const entry of missing) {
     upsertGrant({
-      orderId: order.id, userId: user.id, packId: order.pack_id, txId,
+      orderId: order.id, userId: user.id, packId, txId,
       kind: entry.kind, key: entry.key, label: entry.label, value: entry.value,
     });
   }
@@ -357,21 +378,21 @@ async function stepGameRewards(step, { order, user, snapshot, txId }) {
   if (result.data?.alreadyApplied) step.status = STEP_STATUS.ALREADY;
 }
 
-function stepActivation(step, { order, user, snapshot }) {
+function stepActivation(step, { order, user, snapshot, packId }) {
   transaction(() => {
     run(
       `INSERT INTO user_packs (user_id, pack_id, order_id, active, granted_at, revoked_at)
        VALUES (?, ?, ?, 1, ?, NULL)
        ON CONFLICT(user_id, pack_id) DO UPDATE SET active = 1, order_id = excluded.order_id,
          granted_at = excluded.granted_at, revoked_at = NULL`,
-      user.id, order.pack_id, order.id, now(),
+      user.id, packId, order.id, now(),
     );
   });
   // Registre : le pack devient actif sur le compte (une seule fois par transaction).
   upsertGrant({
-    orderId: order.id, userId: user.id, packId: order.pack_id, txId: `tx_${order.id}`,
-    kind: 'activation', key: `pack:${order.pack_id}`,
-    label: `Pack « ${snapshot.name ?? order.pack_id} » activé`, value: order.pack_id,
+    orderId: order.id, userId: user.id, packId, txId: `tx_${order.id}`,
+    kind: 'activation', key: `pack:${packId}`,
+    label: `Pack « ${snapshot.name ?? packId} » activé`, value: packId,
   });
   step.status = STEP_STATUS.OK;
 }
@@ -436,7 +457,7 @@ export async function backfillUserEntitlements(userId) {
       discordRoleId: packRow.discord_role_id, discordRoleName: packRow.discord_role_name,
       gameRewards: parseJson(packRow.game_rewards, {}) ?? {},
     };
-    const steps = buildSteps({ id: row.order_id, pack_id: row.pack_id }, snapshot, user);
+    const steps = buildSteps({ id: row.order_id, pack_id: row.pack_id }, [{ packId: row.pack_id, snapshot }], user);
 
     // Rôle Discord
     const roleStep = steps.find((s) => s.key === 'discord_role');
@@ -495,41 +516,54 @@ export async function revokeOrder(orderId, { reason = 'remboursement', actor = n
   const order = getOrderRow(orderId);
   if (!order) return { status: 'error', message: 'Commande introuvable' };
   const user = get('SELECT * FROM users WHERE id = ?', order.user_id);
-  const snapshot = parseJson(order.pack_snapshot, {}) ?? {};
+  const items = getOrderItems(orderId);
   const results = [];
 
   // 1. Registre : les récompenses (livrées ou dues) passent en "revoked".
   run('UPDATE grants SET status = ?, revoked_at = ? WHERE order_id = ? AND status IN (?, ?)',
     'revoked', now(), orderId, 'granted', 'pending');
 
-  // 2. Pack inactif sur le compte joueur.
-  run('UPDATE user_packs SET active = 0, revoked_at = ? WHERE user_id = ? AND pack_id = ?',
-    now(), order.user_id, order.pack_id);
+  // 2. Tous les packs du panier deviennent inactifs sur le compte joueur.
+  for (const item of items) {
+    run('UPDATE user_packs SET active = 0, revoked_at = ? WHERE user_id = ? AND pack_id = ?',
+      now(), order.user_id, item.packId);
+  }
 
   const delivery = getDelivery(orderId);
   const steps = delivery?.steps ?? [];
-  const roleId = snapshot.discordRoleId || config.discord.roleBase ||
-    (snapshot.slug === 'full-locker' ? config.discord.roleFullLocker :
-      snapshot.slug === 'moder' ? config.discord.roleModer : '');
+  const multi = items.length > 1;
+  const roleIdOf = (snapshot) => snapshot?.discordRoleId || config.discord.roleBase ||
+    (snapshot?.slug === 'full-locker' ? config.discord.roleFullLocker :
+      snapshot?.slug === 'moder' ? config.discord.roleModer : '');
 
-  // 3. Retrait du rôle Discord (option configurable).
-  if (config.discord.removeOnRefund && roleId && user?.discord_id) {
-    const res = await botRemoveRole(config.discord.guildId, user.discord_id, roleId);
-    results.push({ step: 'discord_role_revoke', status: res.ok ? 'ok' : 'failed', detail: res.error ?? res.reason ?? null });
-    steps.push({ key: 'discord_role_revoke', label: 'Retrait du rôle Discord', status: res.ok ? 'ok' : 'failed', error: res.error ?? null, at: now() });
+  // 3. Retrait des rôles Discord (un par rôle distinct, option configurable).
+  const roleIds = [...new Set(items.map((item) => roleIdOf(item.snapshot)).filter(Boolean))];
+  if (config.discord.removeOnRefund && roleIds.length && user?.discord_id) {
+    for (const roleId of roleIds) {
+      const res = await botRemoveRole(config.discord.guildId, user.discord_id, roleId);
+      results.push({ step: 'discord_role_revoke', status: res.ok ? 'ok' : 'failed', detail: res.error ?? res.reason ?? null });
+      steps.push({ key: multi ? `discord_role_revoke:${roleId}` : 'discord_role_revoke', label: 'Retrait du rôle Discord', status: res.ok ? 'ok' : 'failed', error: res.error ?? null, at: now() });
+    }
   } else {
     steps.push({ key: 'discord_role_revoke', label: 'Retrait du rôle Discord', status: 'skipped', reason: 'option_désactivée_ou_role_absent', at: now() });
   }
 
-  // 4. Retrait des récompenses dans le jeu.
-  const ledger = rewardLedger(snapshot);
-  if (ledger.length) {
+  // 4. Retrait des récompenses dans le jeu, article par article.
+  for (const item of items) {
+    const { packId, snapshot } = item;
+    const ledger = rewardLedger(snapshot);
+    if (!ledger.length) continue;
     const res = await revokeRewards({
-      order, user: user ?? {}, pack: { id: order.pack_id, slug: snapshot.slug, name: snapshot.name },
-      txId: delivery?.tx_id ?? `tx_${order.id}`, rewards: snapshot.gameRewards ?? {},
+      order, user: user ?? {}, pack: { id: packId, slug: snapshot?.slug, name: snapshot?.name },
+      txId: delivery?.tx_id ?? `tx_${order.id}`, rewards: snapshot?.gameRewards ?? {},
     });
     results.push({ step: 'game_revoke', status: res.ok ? 'ok' : (res.skipped ? 'skipped' : 'failed'), detail: res.error ?? res.reason ?? null });
-    steps.push({ key: 'game_revoke', label: 'Retrait des récompenses dans le jeu', status: res.ok ? 'ok' : (res.skipped ? 'skipped' : 'failed'), error: res.error ?? res.reason ?? null, at: now() });
+    steps.push({
+      key: multi ? `game_revoke:${packId}` : 'game_revoke',
+      label: `Retrait des récompenses dans le jeu${multi ? ` — ${snapshot?.name ?? packId}` : ''}`,
+      status: res.ok ? 'ok' : (res.skipped ? 'skipped' : 'failed'),
+      error: res.error ?? res.reason ?? null, at: now(),
+    });
   }
 
   if (delivery) {

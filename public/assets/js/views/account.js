@@ -10,22 +10,35 @@ import { navigate } from '../router.js';
 
 function userHeader(user) {
   const initial = (user.displayName ?? '?').charAt(0).toUpperCase();
+  const isAdmin = user.role === 'admin';
+  const viaDiscord = isAdmin && user.roleSource === 'discord';
+  const linked = Boolean(user.discord?.linked);
   return `
     <div class="row wrap" style="gap:18px;align-items:center">
-      <div class="avatar" style="width:66px;height:66px;border-radius:18px;font-size:1.5rem">
+      <div class="avatar ${linked ? 'linked' : ''}" style="width:66px;height:66px;border-radius:18px;font-size:1.5rem">
         ${user.avatar ? `<img src="${esc(user.avatar)}" alt="" />` : esc(initial)}
       </div>
       <div class="grow">
         <h1 class="h3">${esc(user.displayName)}</h1>
         <div class="row wrap" style="gap:8px;margin-top:8px">
           <span class="badge">${esc(user.email)}</span>
-          ${user.role === 'admin' ? '<span class="badge badge-paid">Administrateur</span>' : ''}
-          ${user.discord?.linked ? `<span class="badge badge-paid">Discord : ${esc(user.discord.username ?? 'lié')}</span>` : '<span class="badge badge-pending">Discord non connecté</span>'}
-          ${user.gamePlayerId ? `<span class="badge badge-paid">Jeu : ${esc(user.gamePlayerId)}</span>` : '<span class="badge badge-pending">Identifiant de jeu absent</span>'}
+          ${isAdmin
+            ? `<span class="badge badge-paid" title="${viaDiscord ? 'Accordé puis revalidé par le serveur via votre rôle Discord Fondateur' : 'Rôle attribué manuellement'}">Administrateur</span>`
+            : '<span class="badge badge-pending">Utilisateur</span>'}
+          ${linked
+            ? `<span class="badge badge-paid">Discord : ${esc(user.discord.username ?? 'lié')}</span>`
+            : '<span class="badge badge-pending">Discord non connecté</span>'}
+          ${user.gamePlayerId ? `<span class="badge badge-paid">Jeu : ${esc(user.gamePlayerId)}</span>` : ''}
         </div>
+        ${viaDiscord ? `
+        <div class="tiny" style="margin-top:10px;color:var(--success)">
+          ✓ Privilèges administrateur accordés par votre rôle Discord <strong>Fondateur</strong>
+          ${user.discordCheckedAt ? ` — dernière vérification ${fmtRelative(user.discordCheckedAt)}` : ''}
+        </div>` : ''}
       </div>
       <div class="row wrap" style="gap:10px">
-        ${user.role === 'admin' ? '<a class="btn btn-ghost btn-sm" href="/admin" data-link>Dashboard</a>' : ''}
+        ${isAdmin ? '<a class="btn btn-ghost btn-sm" href="/admin" data-link>Dashboard</a>' : ''}
+        <a class="btn btn-ghost btn-sm" href="/panier" data-link>Panier</a>
         <button class="btn btn-danger btn-sm" id="btnLogout">Déconnexion</button>
       </div>
     </div>`;
@@ -59,7 +72,7 @@ export async function accountView({ query }) {
   setUser(user);
 
   if (query.get('discord') === 'ok') {
-    setTimeout(() => toastSuccess('Votre compte Discord est maintenant connecté à KALEA.', 'Discord connecté'), 400);
+    setTimeout(() => toastSuccess('Votre compte Discord est maintenant connecté à KaleaShop.', 'Discord connecté'), 400);
   }
 
   const activeOrders = orders.filter((o) => ['pending', 'processing', 'failed'].includes(o.status));
@@ -103,19 +116,50 @@ export async function accountView({ query }) {
             <button class="btn btn-ghost btn-sm" id="btnPassword">Changer mon mot de passe</button>
           </div>
 
-          <!-- Discord -->
+          <!-- Discord & intégrations -->
           <div class="card reveal">
             <div class="card-title">🤖 Intégrations</div>
             <div class="stack" style="margin-top:16px">
+              <div>
+                <div class="row-between wrap">
+                  <div>
+                    <strong>Compte Discord</strong>
+                    <div class="tiny">${user.discord?.linked ? `Lié à ${esc(user.discord.username ?? user.discord.id)}` : 'Requis pour recevoir votre rôle automatiquement'}</div>
+                  </div>
+                  ${user.discord?.linked
+                    ? '<button class="btn btn-ghost btn-sm" id="btnUnlink">Déconnecter</button>'
+                    : `<a class="btn btn-discord btn-sm" href="/api/auth/discord?return=/mon-compte">Connecter Discord</a>`}
+                </div>
+                ${user.discord?.linked ? `
+                <div class="kv" style="margin-top:12px">
+                  <span>Identifiant Discord</span>
+                  <strong class="mono small">${esc(user.discord.id)}</strong>
+                </div>
+                <div class="kv" style="margin-top:8px">
+                  <span>Dernière vérification du rôle</span>
+                  <strong class="small">${user.discordCheckedAt ? fmtRelative(user.discordCheckedAt) : 'jamais'}</strong>
+                </div>
+                <button class="btn btn-ghost btn-sm" id="btnVerifyRole" style="margin-top:12px">
+                  ${icon('refresh', { size: 15 })} Vérifier mon rôle
+                </button>` : ''}
+              </div>
+              <div class="divider" style="margin:6px 0"></div>
               <div class="row-between wrap">
                 <div>
-                  <strong>Compte Discord</strong>
-                  <div class="tiny">${user.discord?.linked ? `Lié à ${esc(user.discord.username ?? user.discord.id)}` : 'Requis pour recevoir votre rôle automatiquement'}</div>
+                  <strong>Rôle sur le site</strong>
+                  <div class="tiny">${user.role === 'admin'
+                    ? (user.roleSource === 'discord'
+                      ? 'Administrateur — revalidé automatiquement via le rôle Discord Fondateur'
+                      : 'Administrateur — attribué manuellement')
+                    : 'Utilisateur : boutique, panier, commandes et profil'}</div>
                 </div>
-                ${user.discord?.linked
-                  ? '<button class="btn btn-ghost btn-sm" id="btnUnlink">Déconnecter</button>'
-                  : `<a class="btn btn-discord btn-sm" href="/api/auth/discord?return=/mon-compte">Connecter Discord</a>`}
+                <span class="badge ${user.role === 'admin' ? 'badge-paid' : ''}">${user.role === 'admin' ? 'Administrateur' : 'Utilisateur'}</span>
               </div>
+              ${user.role === 'admin' && user.roleSource === 'discord' ? `
+              <div class="notice notice-ok" style="margin-top:4px">
+                <span>👑</span>
+                <div class="small">Vous possédez le rôle Discord <strong>Fondateur</strong> : il vous donne l'accès complet au dashboard, recontrôlé par le serveur à chaque requête.</div>
+              </div>` : ''}
               <div class="divider" style="margin:6px 0"></div>
               <div class="row-between wrap">
                 <div>
@@ -288,6 +332,23 @@ export async function accountView({ query }) {
         } catch (error) { toastError(error.message); }
       });
 
+      // Vérification forcée du rôle Discord (le serveur interroge Discord).
+      root.querySelector('#btnVerifyRole')?.addEventListener('click', async (event) => {
+        const restore = loadingButton(event.currentTarget, 'Vérification…');
+        try {
+          const res = await post('/api/account/discord/sync');
+          restore();
+          setUser(res.user);
+          if (res.result?.action === 'promote') toastSuccess(res.message, 'Rôle Fondateur confirmé');
+          else if (res.result?.action === 'demote') toastError(res.message, 'Privilèges retirés');
+          else toastSuccess(res.message, 'Rôle vérifié');
+          navigate('/mon-compte', { replace: true });
+        } catch (error) {
+          restore();
+          toastError(error.message, 'Vérification impossible');
+        }
+      });
+
       root.querySelectorAll('[data-redeliver]').forEach((button) => {
         button.addEventListener('click', async () => {
           const restore = loadingButton(button, 'Livraison…');
@@ -332,7 +393,7 @@ export async function orderView({ params }) {
           <div class="row-between wrap">
             <div>
               <div class="eyebrow" style="margin-bottom:8px">Commande ${esc(order.number)}</div>
-              <h1 class="h3">${esc(order.pack?.emoji ?? '')} ${esc(order.pack?.name ?? 'Pack KALEA')}</h1>
+              <h1 class="h3">${esc(order.pack?.emoji ?? '')} ${esc(order.pack?.name ?? 'Votre commande')}</h1>
               <div class="row wrap" style="gap:8px;margin-top:12px">
                 ${badge(order.status)}
                 <span class="badge">${esc(order.amount)} €</span>
@@ -376,6 +437,8 @@ export async function orderView({ params }) {
           <div class="table-wrap" style="margin-top:14px;border:none">
             <table style="min-width:auto">
               <tbody>
+                <tr><td class="muted">Sous-total</td><td>${(order.subtotalCents / 100).toFixed(2).replace('.', ',')} €</td></tr>
+                ${order.promoCode ? `<tr><td class="muted">Remise <span class="badge">${esc(order.promoCode)}</span></td><td style="color:var(--accent)">− ${esc(order.discount)} €</td></tr>` : ''}
                 <tr><td class="muted">Montant</td><td><strong>${esc(order.amount)} €</strong></td></tr>
                 <tr><td class="muted">Paiement</td><td>${esc(order.provider)} · ${esc(order.statusLabel)}</td></tr>
                 <tr><td class="muted">Payée le</td><td>${order.paidAt ? fmtDate(order.paidAt) : '—'}</td></tr>
@@ -448,7 +511,7 @@ export async function demoPayView({ params }) {
       <div class="container" style="max-width:640px">
         <div class="center" style="margin-bottom:24px">
           <div class="eyebrow" style="justify-content:center">Page de paiement sécurisée</div>
-          <h1 class="h2">Paiement <span class="grad-text">KALEA</span></h1>
+          <h1 class="h2">Paiement <span class="grad-text">KaleaShop</span></h1>
           <p class="muted small" style="margin-top:10px">Mode démonstration — aucun paiement réel n'est effectué.</p>
         </div>
 
@@ -465,7 +528,7 @@ export async function demoPayView({ params }) {
 
           <div class="stack">
             <div class="notice notice-info"><span>🔒</span>
-              <div class="small">En production, cette page est remplacée par la page hébergée du prestataire (PayPal / carte). KALEA ne manipule aucune donnée bancaire.</div></div>
+              <div class="small">En production, cette page est remplacée par la page hébergée du prestataire (PayPal / carte). KaleaShop ne manipule aucune donnée bancaire.</div></div>
 
             <button class="btn btn-primary btn-block btn-lg" data-outcome="succeeded">✓ Payer ${esc(order.amount)} € (succès)</button>
             <button class="btn btn-ghost btn-block" data-outcome="failed">✕ Simuler un paiement refusé</button>

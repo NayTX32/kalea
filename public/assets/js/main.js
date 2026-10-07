@@ -2,17 +2,19 @@
  * KALEA — amorçage de l'application : configuration, session, routes, chrome.
  */
 import { get, post } from './api.js';
-import { state } from './state.js';
+import { state, setUser, cartCount } from './state.js';
 import { esc, toastError, toastSuccess, qs, icon, applyTheme } from './ui.js';
 import { register, startRouter, navigate, setAdminGate } from './router.js';
 
 import { homeView } from './views/home.js';
 import { shopView, packsView } from './views/shop.js';
+import { cartView } from './views/cart.js';
 import { faqView, supportView, notFoundView } from './views/pages.js';
 import { authView, discordConsentView } from './views/auth.js';
 import { accountView, orderView, demoPayView } from './views/account.js';
 import {
   adminOverviewView, adminStatsView, adminPacksView, adminOrdersView,
+  adminCategoriesView, adminPromotionsView,
   adminPaymentsView, adminUsersView, adminDeliveriesView, adminErrorsView,
   adminGameView, adminLogsView, adminTicketsView, adminSettingsView,
   adminGateView,
@@ -23,6 +25,7 @@ import {
 register('/', homeView);
 register('/boutique', shopView);
 register('/packs', packsView);
+register('/panier', cartView);
 register('/faq', faqView);
 register('/support', supportView);
 register('/connexion', authView, { guest: true });
@@ -34,6 +37,8 @@ register('/paiement-demo/:id', demoPayView, { auth: true });
 register('/admin', adminOverviewView, { admin: true });
 register('/admin/statistiques', adminStatsView, { admin: true });
 register('/admin/packs', adminPacksView, { admin: true });
+register('/admin/categories', adminCategoriesView, { admin: true });
+register('/admin/promotions', adminPromotionsView, { admin: true });
 register('/admin/commandes', adminOrdersView, { admin: true });
 register('/admin/paiements', adminPaymentsView, { admin: true });
 register('/admin/utilisateurs', adminUsersView, { admin: true });
@@ -52,34 +57,89 @@ setAdminGate(adminGateView);
 /* --------------------------- Chrome (header) --------------------------- */
 
 function renderHeader() {
-  const actions = qs('#headerActions');
-  const loginBtn = qs('#btnLogin');
-  const adminNav = qs('#navAdmin');
   const user = state.user;
+  const loginBtn = qs('#btnLogin');
+  const userMenu = qs('#userMenu');
+  const adminNav = qs('#navAdmin');
+  const dropdownAdmin = qs('#dropdownAdmin');
 
   if (adminNav) adminNav.hidden = user?.role !== 'admin';
+  if (dropdownAdmin) dropdownAdmin.hidden = user?.role !== 'admin';
+
+  // Déconnecté : bouton « Se connecter » (Discord). Connecté : avatar + menu.
+  if (loginBtn) loginBtn.hidden = Boolean(user);
+  if (userMenu) userMenu.hidden = !user;
 
   if (user) {
-    if (loginBtn) {
-      const initial = (user.displayName ?? '?').charAt(0).toUpperCase();
-      loginBtn.className = 'user-chip';
-      loginBtn.removeAttribute('style');
-      loginBtn.setAttribute('href', '/mon-compte');
-      loginBtn.innerHTML = `
-        <span class="avatar" style="width:26px;height:26px;border-radius:8px;font-size:.78rem">
-          ${user.avatar ? `<img src="${esc(user.avatar)}" alt="" />` : esc(initial)}
-        </span>
-        <span>${esc(user.displayName)}</span>`;
+    const initial = (user.displayName ?? '?').charAt(0).toUpperCase();
+    const avatar = qs('#userAvatar');
+    if (avatar) {
+      avatar.innerHTML = user.avatar
+        ? `<img src="${esc(user.avatar)}" alt="" loading="lazy" />`
+        : esc(initial);
+      // Halo visuel quand le compte est réellement lié à Discord.
+      avatar.classList.toggle('linked', Boolean(user.discord?.linked));
     }
-  } else if (loginBtn) {
-    loginBtn.className = 'btn btn-ghost btn-sm btn-hide-mobile';
-    loginBtn.setAttribute('href', '/connexion');
-    loginBtn.textContent = 'Connexion';
+    const name = qs('#userName');
+    if (name) name.textContent = user.displayName ?? 'Mon compte';
   }
 
   const cta = qs('#btnCta');
-  if (cta) cta.textContent = user?.role === 'admin' ? 'Dashboard' : 'Acheter un pack';
-  if (cta) cta.setAttribute('href', user?.role === 'admin' ? '/admin' : '/boutique');
+  if (cta) {
+    cta.textContent = user?.role === 'admin' ? 'Dashboard' : 'Acheter un pack';
+    cta.setAttribute('href', user?.role === 'admin' ? '/admin' : '/boutique');
+  }
+
+  renderCartBadge();
+}
+
+/** Compteur du panier : animation « pop » à chaque changement. */
+function renderCartBadge() {
+  const el = qs('#cartCount');
+  if (!el) return;
+  const count = cartCount();
+  el.hidden = count === 0;
+  if (el.textContent !== String(count)) {
+    el.textContent = String(count);
+    el.classList.remove('pop');
+    void el.offsetWidth; // relance l'animation
+    el.classList.add('pop');
+  }
+}
+
+/** Menu du compte : dropdown animé, fermant au clic extérieur / Échap. */
+function bindUserMenu() {
+  const chip = qs('#userChip');
+  const dropdown = qs('#userDropdown');
+  if (!chip || !dropdown) return;
+
+  const close = () => {
+    dropdown.hidden = true;
+    chip.setAttribute('aria-expanded', 'false');
+    document.body.classList.remove('menu-open');
+  };
+  chip.addEventListener('click', (event) => {
+    event.stopPropagation();
+    const opening = dropdown.hidden;
+    dropdown.hidden = !opening;
+    chip.setAttribute('aria-expanded', String(opening));
+    document.body.classList.toggle('menu-open', opening);
+  });
+  document.addEventListener('click', (event) => {
+    if (dropdown.hidden) return;
+    if (dropdown.contains(event.target) || chip.contains(event.target)) return;
+    close();
+  });
+  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') close(); });
+  dropdown.querySelectorAll('a').forEach((link) => link.addEventListener('click', close));
+
+  qs('#btnLogout')?.addEventListener('click', async () => {
+    close();
+    try { await post('/api/auth/logout', {}); } catch { /* session déjà close */ }
+    setUser(null);
+    navigate('/');
+    toastSuccess('Vous êtes déconnecté.', 'À bientôt');
+  });
 }
 
 function renderFooter() {
@@ -115,10 +175,17 @@ async function boot() {
   // Fond de site choisi dans /admin/parametres (préréglage ou image).
   applyTheme(state.config?.theme?.background ?? 'nebuleuse');
 
+  // Nom du site (paramètre /admin/parametres) → en-tête et pied de page.
+  const siteName = state.config?.siteName;
+  if (siteName) document.querySelectorAll('.brand-name').forEach((el) => { el.textContent = siteName; });
+
   renderHeader();
   renderFooter();
-  // L'en-tête suit les changements de session (connexion, déconnexion, profil).
+  // L'en-tête suit les changements de session ET de panier.
   window.addEventListener('kalea:state', renderHeader);
+  window.addEventListener('kalea:cart', renderCartBadge);
+  bindUserMenu();
+  renderCartBadge();
 
   // 2. Menu mobile.
   const burger = qs('#burger');
@@ -141,7 +208,7 @@ async function boot() {
     const g = state.config?.game ?? {};
     toastSuccess(
       `Paiement : ${p.activeLabel} — Discord : ${d.oauth ? 'OAuth2 configuré' : 'non configuré'} — API jeu : ${g.configured ? 'connectée' : 'non configurée'}`,
-      'État des services KALEA',
+      'État des services KaleaShop',
     );
   });
 
@@ -176,7 +243,7 @@ boot().catch((error) => {
   console.error('boot_failed', error);
   qs('#view').innerHTML = `
     <section class="section"><div class="container center">
-      <h1 class="h2">KALEA n’a pas pu démarrer</h1>
+      <h1 class="h2">KaleaShop n’a pas pu démarrer</h1>
       <p class="lead" style="margin:14px auto 22px;text-align:center">${esc(error.message)}</p>
       <button class="btn btn-primary" onclick="location.reload()">Réessayer</button>
     </div></section>`;

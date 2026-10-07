@@ -2,10 +2,17 @@
 import { all, get, run, newId, now, parseJson } from '../db.js';
 import { config } from '../config.js';
 import { assertObject, str, int, bool } from '../lib/validate.js';
-import { badRequest, notFound, conflict } from '../lib/errors.js';
+import { badRequest, notFound, conflict, forbidden } from '../lib/errors.js';
 import { audit, queryLogs } from '../lib/logger.js';
 import { requireAdmin } from '../middleware/session.js';
+import { hasPermission } from '../services/roles.js';
 import { listPacks, getPack, serializePack, createPack, updatePack, deletePack } from '../services/packs.js';
+import {
+  listCategories, createCategory, updateCategory, deleteCategory,
+} from '../services/categories.js';
+import {
+  listPromotions, createPromotion, updatePromotion, deletePromotion,
+} from '../services/promotions.js';
 import { serializeOrder, getOrderRow, updateOrder, STATUS_LABELS, ORDER_STATUS } from '../services/orders.js';
 import { dashboardStats } from '../services/stats.js';
 import { refundOrder, paymentsStatus } from '../services/payments/index.js';
@@ -17,9 +24,35 @@ import { toPublicUser } from '../middleware/session.js';
 const SETTING_KEYS = ['site_name', 'tagline', 'support_email', 'discord_invite', 'checkout_note', 'legal_company', 'site_background'];
 
 export function adminRoutes(router) {
-  // Toutes les routes de ce fichier exigent un compte administrateur.
-  router.use((ctx, next) => {
-    if (ctx.path.startsWith('/api/admin/')) return requireAdmin(ctx, next);
+  /**
+   * Porte des API d'administration : compte connecté + rôle administrateur
+   * vérifié côté serveur (avec revalidation du rôle Discord « Fondateur »),
+   * puis permission de la section. Ajouter un rôle = l'ajouter à PERMISSIONS
+   * dans services/roles.js — aucune route à modifier.
+   */
+  const SECTION_PERMISSION = [
+    ['/api/admin/users', 'users'],
+    ['/api/admin/packs', 'products'],
+    ['/api/admin/categories', 'products'],
+    ['/api/admin/promotions', 'promotions'],
+    ['/api/admin/orders', 'orders'],
+    ['/api/admin/deliveries', 'orders'],
+    ['/api/admin/payments', 'payments'],
+    ['/api/admin/stats', 'stats'],
+    ['/api/admin/logs', 'logs'],
+    ['/api/admin/errors', 'logs'],
+    ['/api/admin/tickets', 'support'],
+    ['/api/admin/settings', 'settings'],
+    ['/api/admin/discord', 'roles'],
+  ];
+
+  router.use(async (ctx, next) => {
+    if (!ctx.path.startsWith('/api/admin/')) return next();
+    await requireAdmin(ctx, () => {});
+    const section = SECTION_PERMISSION.find(([prefix]) => ctx.path.startsWith(prefix));
+    if (section && !hasPermission(ctx.userRow, section[1])) {
+      throw forbidden('Votre rôle ne permet pas cette opération.');
+    }
     return next();
   });
 
@@ -59,6 +92,50 @@ export function adminRoutes(router) {
   router.delete('/api/admin/packs/:id', (ctx) => {
     const result = deletePack(ctx.params.id);
     audit('pack.deleted', { actor: ctx.user, target: ctx.params.id, ip: ctx.ip, meta: result });
+    return ctx.json({ ok: true, ...result });
+  });
+
+  /* -------------------------------- Catégories ------------------------------- */
+  router.get('/api/admin/categories', (ctx) => ctx.json({
+    categories: listCategories({ includeInactive: true }),
+  }));
+
+  router.post('/api/admin/categories', (ctx) => {
+    const category = createCategory(assertObject(ctx.body));
+    audit('category.created', { actor: ctx.user, target: category.id, ip: ctx.ip, meta: { name: category.name } });
+    return ctx.json({ category }, 201);
+  });
+
+  router.put('/api/admin/categories/:id', (ctx) => {
+    const category = updateCategory(ctx.params.id, assertObject(ctx.body));
+    audit('category.updated', { actor: ctx.user, target: category.id, ip: ctx.ip, meta: { name: category.name, active: category.active } });
+    return ctx.json({ category });
+  });
+
+  router.delete('/api/admin/categories/:id', (ctx) => {
+    const result = deleteCategory(ctx.params.id);
+    audit('category.deleted', { actor: ctx.user, target: ctx.params.id, ip: ctx.ip, meta: result });
+    return ctx.json({ ok: true, ...result });
+  });
+
+  /* ------------------------------ Promotions -------------------------------- */
+  router.get('/api/admin/promotions', (ctx) => ctx.json({ promotions: listPromotions() }));
+
+  router.post('/api/admin/promotions', (ctx) => {
+    const promo = createPromotion(assertObject(ctx.body));
+    audit('promo.created', { actor: ctx.user, target: promo.id, ip: ctx.ip, meta: { code: promo.code, value: promo.value, kind: promo.kind } });
+    return ctx.json({ promotion: promo }, 201);
+  });
+
+  router.put('/api/admin/promotions/:id', (ctx) => {
+    const promo = updatePromotion(ctx.params.id, assertObject(ctx.body));
+    audit('promo.updated', { actor: ctx.user, target: promo.id, ip: ctx.ip, meta: { code: promo.code, active: promo.active } });
+    return ctx.json({ promotion: promo });
+  });
+
+  router.delete('/api/admin/promotions/:id', (ctx) => {
+    const result = deletePromotion(ctx.params.id);
+    audit('promo.deleted', { actor: ctx.user, target: ctx.params.id, ip: ctx.ip, meta: result });
     return ctx.json({ ok: true, ...result });
   });
 

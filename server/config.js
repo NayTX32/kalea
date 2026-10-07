@@ -53,6 +53,14 @@ const PORT = num('PORT', 4000);
 const CALLBACK_PORT = Number(env('DISCORD_CALLBACK_PORT', '4200')) || 0;
 const BASE_URL = env('BASE_URL', `http://localhost:${PORT}`).replace(/\/+$/, '');
 
+/**
+ * Vrai seulement si le site tourne réellement en local : NODE_ENV≠production
+ * ET URL de base sur localhost. Sert uniquement à autoriser les valeurs de
+ * développement (porte /admin) — jamais sur une URL publique.
+ */
+const localDev =
+  NODE_ENV !== 'production' && /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(\/|$)/i.test(BASE_URL);
+
 /** Secret de session : fourni en prod, auto-généré en dev (invalide au redémarrage). */
 function sessionSecret() {
   const provided = env('SESSION_SECRET');
@@ -142,6 +150,12 @@ export const config = {
     roleFullLocker: env('DISCORD_ROLE_FULLLOCKER'),
     roleModer: env('DISCORD_ROLE_MODER'),
     removeOnRefund: bool('REMOVE_ROLE_ON_REFUND', true),
+    /**
+     * Rôle Discord qui ouvre les privilèges administrateur sur le site.
+     * Accepte un ID (ex. 123456789012345678) ou un nom exact (ex. Fondateur).
+     * Un nom exige DISCORD_BOT_TOKEN pour être résolu en ID.
+     */
+    founderRole: env('DISCORD_ROLE_FOUNDATEUR', 'Fondateur'),
     get oauthConfigured() {
       return Boolean(this.clientId && this.clientSecret);
     },
@@ -164,13 +178,25 @@ export const config = {
   admin: {
     email: env('ADMIN_EMAIL', 'admin@kalea.gg'),
     password: env('ADMIN_PASSWORD'),
-    /** Mot de passe unique de la porte d'accès /admin (comparé à temps constant). */
-    gatePassword: env('ADMIN_GATE_PASSWORD', 'kalea2K26Fn'),
+    /**
+     * Mot de passe unique de la porte d'accès /admin (comparé à temps constant).
+     * Le code étant public sur GitHub, AUCUNE valeur par défaut n'est livrée en
+     * production : un défaut partagé rendrait /admin ouvert à tout le monde.
+     * La valeur de développement ne s'applique que si le site est réellement
+     * servi en local (NODE_ENV≠production ET BASE_URL en localhost) — la clé
+     * reste surchargeable par ADMIN_GATE_PASSWORD (voir /api/auth/admin-unlock).
+     */
+    gatePassword:
+      env('ADMIN_GATE_PASSWORD') || (localDev ? 'kalea2K26Fn' : ''),
   },
   security: {
     rateLimitEnabled: bool('RATE_LIMIT_ENABLED', true),
     rateLimitAuth: num('RATE_LIMIT_AUTH', 10),
     rateLimitApi: num('RATE_LIMIT_API', 240),
+    /** Honorer X-Forwarded-For : obligatoire derrière Render/Caddy, sinon un client pourrait falsifier son IP. */
+    trustProxy: bool('TRUST_PROXY', false),
+    /** Délai (ms) avant revalidation serveur du rôle Discord Fondateur. */
+    roleRevalidateMs: num('ROLE_REVALIDATE_MS', 300000),
   },
 };
 

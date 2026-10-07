@@ -3,6 +3,8 @@ import { config } from '../config.js';
 import { get, run, now, newId } from '../db.js';
 import { randomToken, sha256 } from '../lib/crypto.js';
 import { unauthorized, forbidden } from '../lib/errors.js';
+import { audit, log } from '../lib/logger.js';
+import { syncDiscordRole } from '../services/roles.js';
 
 const COOKIE = config.session.cookieName;
 
@@ -80,9 +82,61 @@ export function requireAuth(ctx, next) {
   return next();
 }
 
-export function requireAdmin(ctx, next) {
+/**
+ * Revalide côté serveur le rôle Discord du compte connecté (contrôle de
+ * fréquence : une vérification toutes les ROLE_REVALIDATE_MS au maximum).
+ * Le contexte de requête est rafraîchi si le rôle a changé.
+ * Une panne Discord ne modifie jamais un rôle.
+ */
+async function refreshDiscordRole(ctx) {
+  const row = ctx.userRow;
+  if (!row) return;
+
+  if (!row.discord_id) {
+    // Lien Discord perdu mais rôle dérivé de Discord → retrait immédiat.
+    if (row.role === 'admin' && row.role_source === 'discord') {
+      run(
+        `UPDATE users SET role = 'user', role_source = 'manual', discord_founder = 0,
+           discord_checked_at = NULL, updated_at = ? WHERE id = ?`,
+        now(), row.id,
+      );
+      applyFreshUser(ctx, row.id);
+      audit('role.revoked', { actor: ctx.user, target: row.id, ip: ctx.ip, meta: { reason: 'discord_unlinked' } });
+      log.info('role_revoked', { userId: row.id, reason: 'discord_unlinked' });
+    }
+    return;
+  }
+
+  let result;
+  try {
+    result = await syncDiscordRole(row, { reason: 'route_guard' });
+  } catch (error) {
+    log.warn('role_guard_failed', { userId: row.id, error: error.message });
+    return;
+  }
+  if (result.action === 'promote' || result.action === 'demote') applyFreshUser(ctx, row.id);
+}
+
+function applyFreshUser(ctx, userId) {
+  const fresh = get('SELECT * FROM users WHERE id = ?', userId);
+  if (!fresh) return;
+  ctx.userRow = fresh;
+  ctx.user = toPublicUser(fresh);
+}
+
+/**
+ * Accès administration : session valide + rôle admin + rôle Discord encore
+ * valable (« Fondateur »). Une seule route admin suffit pour détecter la perte
+ * du rôle Discord et rétrograder le compte.
+ */
+export async function requireAdmin(ctx, next) {
   if (!ctx.user) throw unauthorized('Vous devez être connecté.');
   if (ctx.userRow?.role !== 'admin') throw forbidden('Accès réservé aux administrateurs.');
+
+  await refreshDiscordRole(ctx);
+  if (ctx.userRow?.role !== 'admin') {
+    throw forbidden('Vos privilèges administrateur ont été retirés : votre compte ne possède plus le rôle Discord Fondateur.');
+  }
   return next();
 }
 
@@ -96,6 +150,11 @@ export function toPublicUser(user) {
     role: user.role,
     status: user.status,
     avatar: user.discord_avatar ?? null,
+    // Provenance du rôle (« discord » = accordé puis revalidé par le serveur
+    // après vérification du rôle Fondateur ; « manual » = jamais rétrogradé).
+    roleSource: user.role_source ?? 'manual',
+    discordFounder: user.discord_founder === 1,
+    discordCheckedAt: user.discord_checked_at ?? null,
     discord: user.discord_id
       ? { id: user.discord_id, username: user.discord_username ?? null, linked: true }
       : { id: null, username: null, linked: false },

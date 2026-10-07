@@ -117,7 +117,7 @@ export const paypalProvider = {
           },
         ],
         application_context: {
-          brand_name: 'KALEA',
+          brand_name: 'KaleaShop',
           locale: 'fr-FR',
           landing_page: 'BILLING',
           user_action: 'PAY_NOW',
@@ -166,7 +166,7 @@ export const paypalProvider = {
     const refund = await paypal(`/v2/payments/captures/${encodeURIComponent(captureId)}/refund`, {
       body: {
         amount: { value: centsToValue(amountCents), currency_code: order.currency ?? 'EUR' },
-        note_to_payer: 'Remboursement KALEA',
+        note_to_payer: 'Remboursement KaleaShop',
         reason: reason === 'requested_by_customer' ? 'OTHER' : reason,
       },
     });

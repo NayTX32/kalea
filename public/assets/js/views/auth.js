@@ -18,7 +18,7 @@ export function authView({ query }) {
     <section class="section">
       <div class="container" style="max-width:520px">
         <div class="center" style="margin-bottom:28px">
-          <div class="eyebrow" style="justify-content:center">Compte KALEA</div>
+          <div class="eyebrow" style="justify-content:center">Compte KaleaShop</div>
           <h1 class="h2" id="authTitle">${mode === 'login' ? 'Bon retour parmi <span class="grad-text">nous</span>' : 'Créez votre <span class="grad-text">compte</span>'}</h1>
           <p class="muted small" style="margin-top:10px">
             Suivez vos commandes, connectez votre Discord et recevez vos récompenses.
@@ -77,7 +77,7 @@ export function authView({ query }) {
           </form>
 
           <p class="tiny center" style="margin-top:16px">
-            En continuant, vous acceptez les conditions de vente et la politique de confidentialité de KALEA.
+            En continuant, vous acceptez les conditions de vente et la politique de confidentialité de KaleaShop.
           </p>
         </div>
 
@@ -127,7 +127,7 @@ export function authView({ query }) {
           const path = currentMode === 'login' ? '/api/auth/login' : '/api/auth/register';
           const res = await post(path, data);
           setUser(res.user);
-          toastSuccess(currentMode === 'login' ? `Ravi de vous revoir, ${res.user.displayName} !` : 'Votre compte KALEA est créé.', 'Connecté');
+          toastSuccess(currentMode === 'login' ? `Ravi de vous revoir, ${res.user.displayName} !` : 'Votre compte KaleaShop est créé.', 'Connecté');
           navigate(next.startsWith('/') && !next.startsWith('//') ? next : '/mon-compte');
         } catch (error) {
           restore();
@@ -160,13 +160,13 @@ export function discordConsentView({ query }) {
           <div class="discord-head">
             <span class="discord-icon">${DISCORD_MARK}</span>
             <div>
-              <div class="discord-app">KALEA</div>
-              <div class="tiny muted">Boutique officielle</div>
+              <div class="discord-app">KaleaShop</div>
+              <div class="tiny muted">Boutique gaming officielle</div>
             </div>
           </div>
 
           <h1 class="h3 center" style="margin-top:6px">
-            <strong>KALEA</strong> souhaite accéder à votre compte Discord
+            <strong>KaleaShop</strong> souhaite accéder à votre compte Discord
           </h1>
 
           ${discordReady ? `
@@ -181,10 +181,10 @@ export function discordConsentView({ query }) {
                 <div><strong>Votre identité</strong><div class="tiny muted">Pseudo, avatar et identifiant Discord</div></div>
               </div>
               <div class="discord-perm"><span>🏰</span>
-                <div><strong>Appartenance au serveur KALEA</strong><div class="tiny muted">Pour attribuer vos rôles (Pack de Base, Full Locker, Moder)</div></div>
+                <div><strong>Appartenance au serveur Discord</strong><div class="tiny muted">Pour attribuer vos rôles (Pack de Base, Full Locker, Moder) et vérifier le rôle Fondateur</div></div>
               </div>
               <div class="discord-perm"><span>🔗</span>
-                <div><strong>Liaison au compte KALEA</strong><div class="tiny muted">Vos achats et récompenses vous suivent</div></div>
+                <div><strong>Liaison au compte KaleaShop</strong><div class="tiny muted">Vos achats et récompenses vous suivent</div></div>
               </div>
             </div>
 

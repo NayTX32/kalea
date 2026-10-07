@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#06060c" />
-  <meta name="description" content="KALEA — la boutique officielle du jeu : packs, livraison automatique des récompenses, rôle Discord et paiement sécurisé." />
-  <title>KALEA — Boutique officielle</title>
+  <meta name="description" content="KaleaShop — boutique gaming officielle : packs, livraison automatique des récompenses, rôle Discord et paiement sécurisé." />
+  <title>KaleaShop — Boutique gaming officielle</title>
   <link rel="icon" href="/assets/img/logo.png" type="image/png" />
   <link rel="apple-touch-icon" href="/assets/img/logo.png" />
   <link rel="preload" as="font" type="font/woff2" href="/assets/fonts/space-grotesk-latin.woff2" crossorigin />
@@ -20,13 +20,13 @@
 
   <header class="header" id="header">
     <div class="container header-inner">
-      <a class="brand" href="/" data-link aria-label="KALEA — Accueil">
+      <a class="brand" href="/" data-link aria-label="KaleaShop — Accueil">
         <span class="brand-mark">
           <img src="/assets/img/logo.png" alt="" width="42" height="42" />
         </span>
         <span>
-          <span class="brand-name">KALEA</span>
-          <span class="brand-sub">Boutique officielle</span>
+          <span class="brand-name">KaleaShop</span>
+          <span class="brand-sub">Boutique gaming</span>
         </span>
       </a>
 
@@ -34,6 +34,7 @@
         <a href="/" data-link data-nav="/">Accueil</a>
         <a href="/boutique" data-link data-nav="/boutique">Boutique</a>
         <a href="/packs" data-link data-nav="/packs">Packs</a>
+        <a href="/panier" data-link data-nav="/panier">Panier</a>
         <a href="/mon-compte" data-link data-nav="/mon-compte">Mon compte</a>
         <a href="/faq" data-link data-nav="/faq">FAQ</a>
         <a href="/support" data-link data-nav="/support">Support</a>
@@ -41,15 +42,53 @@
       </nav>
 
       <div class="header-actions" id="headerActions">
-        <a class="btn btn-ghost btn-sm btn-hide-mobile" href="/connexion" data-link id="btnLogin">Connexion</a>
-        <a class="btn btn-primary btn-sm" href="/boutique" data-link id="btnCta">Acheter un pack</a>
+        <!-- Panier -->
+        <a class="icon-btn" href="/panier" data-link id="btnCart" aria-label="Voir le panier">
+          <svg class="ico" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9.6" cy="19.4" r="1.5"/><circle cx="17.2" cy="19.4" r="1.5"/><path d="M2.6 3.6h2.7l2.5 11.3h10.2l2.5-8.3H6.5"/></svg>
+          <span class="cart-count" id="cartCount" hidden>0</span>
+        </a>
+
+        <!-- Connexion Discord (visiteurs uniquement) : un seul bouton, deux entrées -->
+        <a class="btn btn-discord btn-sm" href="/api/auth/discord?return=%2Fmon-compte" id="btnLogin" title="Se connecter avec Discord" aria-label="Se connecter avec Discord">
+          <svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.3 6.3a13.6 13.6 0 0 1 5.4 0M8.6 6.6C5.9 8.1 4 11.3 4 15.4c0 0 2.6 2.4 6.5 2.6l1-1.6M15.4 6.6c2.7 1.5 4.6 4.7 4.6 8.8 0 0-2.6 2.4-6.5 2.6l-1-1.6"/><path d="M8.9 16.2c2.1 1 4.1 1 6.2 0"/><circle cx="9.4" cy="12.4" r="1.2" fill="currentColor" stroke="none"/><circle cx="14.6" cy="12.4" r="1.2" fill="currentColor" stroke="none"/></svg>
+          <span class="btn-login-label">Se connecter</span>
+        </a>
+        <a class="btn btn-primary btn-sm btn-hide-mobile" href="/boutique" data-link id="btnCta">Acheter un pack</a>
+
+        <!-- Menu du compte (avatar Discord + actions) -->
+        <div class="user-menu" id="userMenu" hidden>
+          <button class="user-chip" type="button" id="userChip" aria-haspopup="true" aria-expanded="false" aria-label="Ouvrir le menu du compte">
+            <span class="avatar" id="userAvatar"></span>
+            <span id="userName">Mon compte</span>
+            <svg class="ico chev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.4 9.4L12 15l5.6-5.6"/></svg>
+          </button>
+          <div class="dropdown" id="userDropdown" role="menu" hidden>
+            <a class="dropdown-item" href="/mon-compte" data-link role="menuitem">
+              <svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8.2" r="3.6"/><path d="M4.6 20.2a7.4 7.4 0 0 1 14.8 0"/></svg>
+              Mon compte
+            </a>
+            <a class="dropdown-item" href="/panier" data-link role="menuitem">
+              <svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9.6" cy="19.4" r="1.5"/><circle cx="17.2" cy="19.4" r="1.5"/><path d="M2.6 3.6h2.7l2.5 11.3h10.2l2.5-8.3H6.5"/></svg>
+              Panier
+            </a>
+            <a class="dropdown-item" href="/admin" data-link role="menuitem" id="dropdownAdmin" hidden>
+              <svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="2"/></svg>
+              Dashboard
+            </a>
+            <button class="dropdown-item danger" type="button" id="btnLogout" role="menuitem">
+              <svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.6 4.4h3.6a2 2 0 0 1 2 2v11.2a2 2 0 0 1-2 2h-3.6"/><path d="M9.6 8.2L5.8 12l3.8 3.8M5.8 12h8.6"/></svg>
+              Se déconnecter
+            </button>
+          </div>
+        </div>
+
         <button class="burger" id="burger" aria-label="Ouvrir le menu" aria-expanded="false"><span></span></button>
       </div>
     </div>
   </header>
 
   <main id="view" class="view-enter" tabindex="-1">
-    <div class="loader-page"><div class="spinner spinner-lg"></div><p>Chargement de KALEA…</p></div>
+    <div class="loader-page"><div class="spinner spinner-lg"></div><p>Chargement de KaleaShop…</p></div>
   </main>
 
   <footer class="footer">
@@ -60,10 +99,10 @@
             <span class="brand-mark">
               <img src="/assets/img/logo.png" alt="" width="38" height="38" />
             </span>
-            <span><span class="brand-name">KALEA</span><span class="brand-sub">Boutique officielle</span></span>
+            <span><span class="brand-name">KaleaShop</span><span class="brand-sub">Boutique gaming</span></span>
           </a>
           <p class="muted small" style="max-width:36ch">
-            La boutique officielle du jeu. Achetez un pack, recevez votre rôle Discord et vos
+            La boutique gaming officielle : achetez un pack, recevez votre rôle Discord et vos
             récompenses en jeu automatiquement, en quelques secondes.
           </p>
           <div class="pill-group" style="margin-top:16px" id="footerPays"></div>
@@ -72,6 +111,7 @@
           <h6>Boutique</h6>
           <a href="/boutique" data-link>Tous les packs</a>
           <a href="/packs" data-link>Comparer les packs</a>
+          <a href="/panier" data-link>Mon panier</a>
           <a href="/mon-compte" data-link>Mon compte</a>
           <a href="/mon-compte" data-link>Mes commandes</a>
         </div>
@@ -92,11 +132,14 @@
         </div>
       </div>
       <div class="footer-bottom">
-        <span>© <span id="year"></span> KALEA — Tous droits réservés.</span>
+        <span>© <span id="year"></span> KaleaShop — Tous droits réservés.</span>
         <span id="footerProvider">Paiement sécurisé · Aucune donnée bancaire stockée</span>
       </div>
     </div>
   </footer>
+
+  <!-- Barre de progression des navigations (chargement de vue) -->
+  <div class="route-bar" id="routeBar" aria-hidden="true"></div>
 
   <div class="toasts" id="toasts" aria-live="polite"></div>
   <div id="modalRoot"></div>

@@ -18,7 +18,7 @@ export async function faqView() {
         <div class="eyebrow">Aide</div>
         <h1 class="h2">Questions <span class="grad-text">fréquentes</span></h1>
         <p class="lead" style="margin-top:14px">
-          Tout ce qu'il faut savoir sur l'achat, la livraison des récompenses et la sécurité de KALEA.
+          Tout ce qu'il faut savoir sur l'achat, la livraison des récompenses et la sécurité de KaleaShop.
         </p>
       </div>
     </section>
@@ -58,12 +58,12 @@ export async function faqView() {
           <div class="card reveal">
             <div class="card-title">${icon('card', { size: 19 })} Votre paiement</div>
             <p class="muted small" style="margin-top:12px">
-              KALEA utilise un prestataire professionnel de paiement. Les moyens proposés
+              KaleaShop utilise un prestataire professionnel de paiement. Les moyens proposés
               dépendent de votre pays : PayPal, carte bancaire (Visa, Mastercard, Amex, CB),
               Apple Pay, Google Pay, SEPA, virement et moyens locaux.
             </p>
             <p class="muted small" style="margin-top:12px">
-              <strong>Aucune donnée bancaire n'est stockée sur KALEA.</strong> Les paiements
+              <strong>Aucune donnée bancaire n'est stockée sur KaleaShop.</strong> Les paiements
               échoués, annulés et remboursés sont gérés automatiquement.
             </p>
             <div class="pill-group" style="margin-top:16px">
@@ -102,7 +102,7 @@ export async function supportView() {
   const html = `
     <section class="section-sm">
       <div class="container">
-        <div class="eyebrow">Support KALEA</div>
+        <div class="eyebrow">Support KaleaShop</div>
         <h1 class="h2">Comment pouvons-nous <span class="grad-text">vous aider</span> ?</h1>
         <p class="lead" style="margin-top:14px">
           Problème de livraison, paiement, rôle Discord ou compte : décrivez votre situation,

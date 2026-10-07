@@ -111,12 +111,12 @@ const DEFAULT_PACKS = [
 ];
 
 const DEFAULT_SETTINGS = {
-  site_name: 'KALEA',
-  tagline: 'La boutique officielle du jeu',
+  site_name: 'KaleaShop',
+  tagline: 'La boutique gaming officielle',
   support_email: 'support@kalea.gg',
   discord_invite: 'https://discord.gg/kalea',
-  legal_company: 'KALEA',
-  checkout_note: 'Paiement sécurisé — aucune donnée bancaire n’est stockée par KALEA.',
+  legal_company: 'KaleaShop',
+  checkout_note: 'Paiement sécurisé — aucune donnée bancaire n’est stockée par KaleaShop.',
 };
 
 export function seed() {
@@ -162,17 +162,33 @@ export function seed() {
     let generated = false;
     if (!password) {
       if (config.isProd) {
-        log.error('admin_password_missing', { message: 'ADMIN_PASSWORD doit être défini en production.' });
-        return;
+        // Production : on ne livre JAMAIS un mot de passe connu publiquement
+        // (le dépôt est public). Le compte est créé avec un mot de passe
+        // aléatoire, donc la connexion classique est sans objet : la porte
+        // /admin (ADMIN_GATE_PASSWORD, obligatoire en production) reste le
+        // chemin d'accès, l'administrateur définira son mot de passe depuis
+        // « Mon compte ».
+        password = crypto.randomBytes(24).toString('base64url');
+        log.warn('admin_password_generated', {
+          email: adminEmail,
+          message: 'ADMIN_PASSWORD absent : mot de passe aléatoire généré (connexion classique indisponible).',
+        });
+        console.log('');
+        console.log('  ⚠ ADMIN_PASSWORD absent : compte administrateur créé avec un mot de');
+        console.log('    passe aléatoire (non affiché) — la connexion classique est fermée.');
+        console.log('    → Accès par la porte /admin (ADMIN_GATE_PASSWORD), puis définissez');
+        console.log('      votre propre mot de passe depuis « Mon compte ».');
+        console.log('');
+      } else {
+        password = 'KaleaAdmin2026!';
+        generated = true;
       }
-      password = 'KaleaAdmin2026!';
-      generated = true;
     }
     const id = newId('usr');
     run(
       `INSERT INTO users (id, email, password_hash, display_name, role, status, locale, created_at, updated_at)
        VALUES (?, ?, ?, ?, 'admin', 'active', 'fr', ?, ?)`,
-      id, adminEmail, hashPassword(password), 'Administrateur KALEA', now(), now(),
+      id, adminEmail, hashPassword(password), 'Administrateur KaleaShop', now(), now(),
     );
     log.info('seed_admin', { email: adminEmail, generatedPassword: generated });
     if (generated) {

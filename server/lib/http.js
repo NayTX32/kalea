@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { AppError } from './errors.js';
 import { log } from './logger.js';
+import { config } from '../config.js';
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -76,7 +77,12 @@ function readBody(req) {
 
 function createContext(req, res) {
   const host = req.headers.host ?? 'localhost';
-  const forwarded = String(req.headers['x-forwarded-for'] ?? '').split(',')[0].trim();
+  /* X-Forwarded-For n'est honoré que derrière un proxy de confiance
+   * (TRUST_PROXY=1, obligatoire sur Render) : sinon un client pourrait
+   * falsifier son adresse IP et contourner les limitations de débit. */
+  const forwarded = config.security.trustProxy
+    ? String(req.headers['x-forwarded-for'] ?? '').split(',')[0].trim()
+    : '';
   const ip = forwarded || req.socket.remoteAddress || '0.0.0.0';
   const ctx = {
     req,

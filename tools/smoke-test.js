@@ -77,7 +77,7 @@ async function main() {
 
   // 0. Configuration publique
   const cfg = await call('GET', '/api/config');
-  check('GET /api/config', cfg.res.status === 200 && cfg.json?.siteName === 'KALEA');
+  check('GET /api/config', cfg.res.status === 200 && cfg.json?.siteName === 'KaleaShop');
   const csrf = jar.get('kalea_csrf');
   check('Cookie CSRF délivré', Boolean(csrf));
 

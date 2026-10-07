@@ -8,10 +8,10 @@
 import { get } from '../api.js';
 import { state } from '../state.js';
 import { esc, reveal, countUp, accordion, icon } from '../ui.js';
-import { packCard, buyPack } from './shop.js';
+import { packCard, bindPackActions } from './shop.js';
 
 const LOGO = `
-<img class="hero-logo" src="/assets/img/logo.png" alt="Logo KALEA" width="112" height="112" />`;
+<img class="hero-logo" src="/assets/img/logo.png" alt="Logo KaleaShop" width="112" height="112" />`;
 
 export async function homeView() {
   let packs = [];
@@ -23,23 +23,28 @@ export async function homeView() {
   const payments = state.config?.payments ?? {};
   const methods = payments.methods ?? [];
   const featured = packs.find((p) => p.badge === 'Populaire') ?? packs[1];
+  const siteName = state.config?.siteName ?? 'KaleaShop';
+  const logged = Boolean(state.user);
 
   const html = `
     <!-- ============================== HERO ============================== -->
     <section class="hero">
+      <div class="hero-orb" aria-hidden="true"></div>
       <div class="container hero-inner">
         <div>
           ${LOGO}
-          <div class="eyebrow">Boutique officielle du jeu</div>
-          <h1 class="h1">Débloquez votre <span class="grad-text">jeu</span> en quelques secondes.</h1>
+          <div class="eyebrow">Boutique gaming officielle</div>
+          <h1 class="h1">Bienvenue chez <span class="grad-text">${esc(siteName)}</span>.</h1>
           <p class="lead" style="margin-top:18px">
-            Choisissez votre pack, payez en toute sécurité : votre rôle Discord et vos
-            récompenses en jeu arrivent <strong>automatiquement</strong>, sans attente
-            ni intervention manuelle.
+            Débloquez votre jeu en quelques secondes : choisissez votre pack, payez en toute
+            sécurité, et recevez votre rôle Discord ainsi que vos récompenses en jeu
+            <strong>automatiquement</strong>, sans attente.
           </p>
           <div class="hero-actions">
-            <a class="btn btn-primary btn-lg" href="/boutique" data-link>Voir la boutique ${icon('arrow-right', { size: 17 })}</a>
-            <a class="btn btn-ghost btn-lg" href="/packs" data-link>Comparer les packs</a>
+            <a class="btn btn-primary btn-lg" href="/boutique" data-link>Découvrir la boutique ${icon('arrow-right', { size: 17 })}</a>
+            ${logged
+              ? `<a class="btn btn-ghost btn-lg" href="/mon-compte" data-link>Mon compte</a>`
+              : `<a class="btn btn-ghost btn-lg" href="/api/auth/discord?return=%2F">${icon('discord', { size: 17 })} Se connecter avec Discord</a>`}
           </div>
           <div class="hero-stats">
             <div class="hero-stat"><div class="num grad-text" data-count="${packs.length}">0</div><div class="lbl">Packs disponibles</div></div>
@@ -54,8 +59,8 @@ export async function homeView() {
             <span class="badge badge-paid">${icon('activity', { size: 14 })} Temps réel</span>
           </div>
           <div class="step-track" style="margin-top:18px">
-            <div class="step-item ok"><span class="dot">1</span><div><strong>Commande créée</strong><div class="tiny">Votre panier est réservé immédiatement</div></div></div>
-            <div class="step-item ok"><span class="dot">2</span><div><strong>Paiement sécurisé</strong><div class="tiny">Aucune donnée bancaire stockée par KALEA</div></div></div>
+            <div class="step-item ok"><span class="dot">1</span><div><strong>Panier préparé</strong><div class="tiny">Vos packs sont réunis en une commande</div></div></div>
+            <div class="step-item ok"><span class="dot">2</span><div><strong>Paiement sécurisé</strong><div class="tiny">Aucune donnée bancaire stockée par ${esc(siteName)}</div></div></div>
             <div class="step-item ok"><span class="dot">3</span><div><strong>Confirmation</strong><div class="tiny">Le paiement est vérifié côté serveur</div></div></div>
             <div class="step-item running"><span class="dot">4</span><div><strong>Recevez tout</strong><div class="tiny">Rôle Discord + récompenses en jeu</div></div></div>
           </div>
@@ -83,7 +88,7 @@ export async function homeView() {
     <section class="section">
       <div class="container">
         <div class="center" style="max-width:720px;margin:0 auto 46px">
-          <div class="eyebrow" style="justify-content:center">Pourquoi KALEA</div>
+          <div class="eyebrow" style="justify-content:center">Pourquoi ${esc(siteName)}</div>
           <h2 class="h2">Une boutique pensée pour les <span class="grad-text">joueurs</span></h2>
           <p class="lead" style="margin:16px auto 0;text-align:center">
             Vous payez, on s'occupe du reste : rôle, récompenses et suivi de commande
@@ -97,7 +102,7 @@ export async function homeView() {
           </div>
           <div class="card card-hover reveal">
             <div class="card-title">${icon('card', { size: 19 })} Paiement sécurisé</div>
-            <p class="muted small">PayPal, carte bancaire et moyens locaux selon votre pays. Aucune donnée bancaire n'est stockée par KALEA.</p>
+            <p class="muted small">PayPal, carte bancaire et moyens locaux selon votre pays. Aucune donnée bancaire n'est stockée par ${esc(siteName)}.</p>
           </div>
           <div class="card card-hover reveal">
             <div class="card-title">${icon('discord', { size: 19 })} Connexion Discord</div>
@@ -117,7 +122,7 @@ export async function homeView() {
         <div class="row-between wrap" style="margin-bottom:34px">
           <div>
             <div class="eyebrow">Nos offres</div>
-            <h2 class="h2">Les packs <span class="grad-text">KALEA</span></h2>
+            <h2 class="h2">Les packs <span class="grad-text">${esc(siteName)}</span></h2>
           </div>
           <a class="btn btn-ghost" href="/packs" data-link>Comparer en détail ${icon('arrow-right', { size: 16 })}</a>
         </div>
@@ -178,7 +183,7 @@ export async function homeView() {
     </section>`;
 
   return {
-    title: 'Boutique officielle',
+    title: 'Accueil',
     html,
     mount(root) {
       reveal(root);
@@ -186,12 +191,8 @@ export async function homeView() {
       root.querySelectorAll('[data-count]').forEach((el) => {
         countUp(el, Number(el.dataset.count), { suffix: el.dataset.suffix ?? '' });
       });
-      root.querySelectorAll('[data-buy]').forEach((button) => {
-        button.addEventListener('click', () => {
-          const pack = packs.find((p) => p.id === button.dataset.buy);
-          if (pack) buyPack(pack, button);
-        });
-      });
+      // Cartes produit : ajout au panier + fiche produit (modale).
+      bindPackActions(root, packs);
     },
   };
 }

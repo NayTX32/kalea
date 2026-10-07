@@ -64,6 +64,36 @@ CREATE TABLE IF NOT EXISTS packs (
   updated_at       INTEGER NOT NULL
 );
 
+/* Catégories de produits (filtres publics + classement dashboard). */
+CREATE TABLE IF NOT EXISTS categories (
+  id          TEXT PRIMARY KEY,
+  slug        TEXT NOT NULL UNIQUE,
+  name        TEXT NOT NULL,
+  emoji       TEXT NOT NULL DEFAULT '🗂️',
+  description TEXT NOT NULL DEFAULT '',
+  sort_order  INTEGER NOT NULL DEFAULT 0,
+  active      INTEGER NOT NULL DEFAULT 1,
+  created_at  INTEGER NOT NULL,
+  updated_at  INTEGER NOT NULL
+);
+
+/* Codes promotionnels. Le code est stocké en MAJUSCULES (unicité sensible). */
+CREATE TABLE IF NOT EXISTS promotions (
+  id               TEXT PRIMARY KEY,
+  code             TEXT NOT NULL UNIQUE,
+  label            TEXT NOT NULL DEFAULT '',
+  kind             TEXT NOT NULL DEFAULT 'percent', /* percent | fixed */
+  value            INTEGER NOT NULL,                /* % (1-99) ou centimes */
+  min_amount_cents INTEGER NOT NULL DEFAULT 0,
+  max_uses         INTEGER,                         /* NULL = illimité */
+  used_count       INTEGER NOT NULL DEFAULT 0,
+  starts_at        INTEGER,
+  ends_at          INTEGER,
+  active           INTEGER NOT NULL DEFAULT 1,
+  created_at       INTEGER NOT NULL,
+  updated_at       INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS orders (
   id                  TEXT PRIMARY KEY,
   order_number        TEXT NOT NULL UNIQUE,
@@ -88,6 +118,20 @@ CREATE TABLE IF NOT EXISTS orders (
 CREATE INDEX IF NOT EXISTS idx_orders_user ON orders(user_id);
 CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
 CREATE INDEX IF NOT EXISTS idx_orders_created ON orders(created_at);
+
+/* Articles d'une commande (panier multi-articles).
+   Une commande historique sans ligne ici reste lisible : on retombe sur
+   orders.pack_id / pack_snapshot (voir getOrderItems). */
+CREATE TABLE IF NOT EXISTS order_items (
+  id          TEXT PRIMARY KEY,
+  order_id    TEXT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+  pack_id     TEXT NOT NULL REFERENCES packs(id),
+  snapshot    TEXT NOT NULL,
+  price_cents INTEGER NOT NULL,
+  qty         INTEGER NOT NULL DEFAULT 1,
+  created_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id);
 
 CREATE TABLE IF NOT EXISTS payment_events (
   id           TEXT PRIMARY KEY,
@@ -190,7 +234,37 @@ export function getDb() {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   handle = new DatabaseSync(file);
   handle.exec(SCHEMA);
+  migrate(handle);
   return handle;
+}
+
+/**
+ * Colonnes ajoutées après-coup : une base existante continue de fonctionner.
+ * `ALTER TABLE` échoue si la colonne existe déjà → erreur ignorée volontairement.
+ */
+const MIGRATIONS = [
+  // Provenance du rôle : 'discord' (rôles Fondateur) ou 'manual' (dashboard).
+  `ALTER TABLE users ADD COLUMN role_source TEXT NOT NULL DEFAULT 'manual'`,
+  // Dernière vérification serveur du rôle Discord + résultat mis en cache.
+  `ALTER TABLE users ADD COLUMN discord_checked_at INTEGER`,
+  `ALTER TABLE users ADD COLUMN discord_founder INTEGER NOT NULL DEFAULT 0`,
+  // Catégories de produits (un pack peut ne pas en avoir).
+  `ALTER TABLE packs ADD COLUMN category_id TEXT REFERENCES categories(id) ON DELETE SET NULL`,
+  // Stock : -1 = illimité, 0 = épuisé, n>0 = n unités restantes.
+  `ALTER TABLE packs ADD COLUMN stock INTEGER NOT NULL DEFAULT -1`,
+  // Promotion appliquée à la commande (vérifiée puis recalculée côté serveur).
+  `ALTER TABLE orders ADD COLUMN promo_code TEXT`,
+  `ALTER TABLE orders ADD COLUMN discount_cents INTEGER NOT NULL DEFAULT 0`,
+];
+
+function migrate(db) {
+  for (const sql of MIGRATIONS) {
+    try {
+      db.exec(sql);
+    } catch (error) {
+      if (!/duplicate column/i.test(String(error?.message ?? ''))) throw error;
+    }
+  }
 }
 
 export function closeDb() {

@@ -13,7 +13,7 @@ import { log, audit } from '../../lib/logger.js';
 import { stripeProvider } from './stripe.js';
 import { paypalProvider } from './paypal.js';
 import { demoProvider } from './demo.js';
-import { getOrderRow, updateOrder, markOrderPaid, ORDER_STATUS } from '../orders.js';
+import { getOrderRow, updateOrder, markOrderPaid, releaseOrderStock, ORDER_STATUS } from '../orders.js';
 import { fulfillOrder, revokeOrder } from '../fulfillment.js';
 
 const PROVIDERS = {
@@ -394,12 +394,14 @@ export async function refundOrder({ order, amountCents = order.amount_cents, rea
   if (fullRefund) {
     // Retrait automatique des rôles / récompenses si l'option est activée.
     await revokeOrder(order.id, { reason: 'remboursement', actor });
+    releaseOrderStock(order.id); // le stock devient de nouveau disponible
   }
   return { refundId, status, fullRefund };
 }
 
 async function applyRefund({ order, refundId, amountCents, providerName, reason, actor = null }) {
   const fullRefund = Number(amountCents) >= order.amount_cents;
+  const wasRefunded = order.status === ORDER_STATUS.REFUNDED;
   updateOrder(order.id, {
     status: fullRefund ? ORDER_STATUS.REFUNDED : order.status,
     providerRefundId: refundId,
@@ -407,7 +409,11 @@ async function applyRefund({ order, refundId, amountCents, providerName, reason,
     refundedCents: Number(amountCents),
   });
   audit('payment.refunded', { actor, target: order.id, meta: { refundId, amountCents, provider: providerName } });
-  if (fullRefund) await revokeOrder(order.id, { reason: 'remboursement', actor });
+  if (fullRefund) {
+    await revokeOrder(order.id, { reason: 'remboursement', actor });
+    // Garde anti-double : seul un état non encore « remboursé » restitue le stock.
+    if (!wasRefunded) releaseOrderStock(order.id);
+  }
   return { status: 'processed', message: 'Remboursement appliqué' };
 }
 

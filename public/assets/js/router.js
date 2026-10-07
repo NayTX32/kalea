@@ -66,6 +66,30 @@ function setActiveNav(pathname) {
   });
 }
 
+/* --------- Barre de progression discrète pendant le chargement ----------- */
+let pendingViews = 0;
+function loadingBar(on) {
+  const bar = qs('#routeBar');
+  if (!bar) return;
+  pendingViews = Math.max(0, pendingViews + (on ? 1 : -1));
+  bar.classList.toggle('active', pendingViews > 0);
+}
+
+/** Squelette de chargement affiché pendant la résolution de la vue. */
+function skeletonPage() {
+  return `
+    <div class="container section" aria-busy="true" aria-live="polite">
+      <div class="skeleton" style="height:12px;width:130px"></div>
+      <div class="skeleton" style="height:34px;width:min(340px,70%);margin-top:16px"></div>
+      <div class="skeleton" style="height:14px;width:min(520px,90%);margin-top:14px"></div>
+      <div class="grid grid-3" style="margin-top:36px">
+        <div class="skeleton skeleton-card"></div>
+        <div class="skeleton skeleton-card"></div>
+        <div class="skeleton skeleton-card"></div>
+      </div>
+    </div>`;
+}
+
 export async function render() {
   const pathname = location.pathname;
   const query = new URLSearchParams(location.search);
@@ -94,8 +118,10 @@ export async function render() {
     // Zone protégée : écran de mot de passe (ou refus si compte non admin).
     if (adminGate) {
       try {
+        loadingBar(true);
         await showView(adminGate, { params, query, path: pathname, state, query2: query });
       } catch (error) { errorHandler?.(error, { pathname }); }
+      finally { loadingBar(false); }
       return;
     }
     navigate(state.user ? '/' : '/connexion?next=%2Fadmin', { replace: true });
@@ -107,9 +133,14 @@ export async function render() {
   }
 
   try {
+    loadingBar(true);
+    // Squelette pendant le chargement des données de la vue (effet moderne).
+    viewEl.innerHTML = skeletonPage();
     await showView(view, { params, query, path: pathname, state, query2: query });
   } catch (error) {
     errorHandler?.(error, { pathname });
+  } finally {
+    loadingBar(false);
   }
 }
 
@@ -124,7 +155,7 @@ async function showView(view, ctx) {
   void viewEl.offsetWidth; // relance l'animation
   viewEl.classList.add('view-enter');
 
-  document.title = title ? `${title} — KALEA` : 'KALEA — Boutique officielle';
+  document.title = title ? `${title} — KaleaShop` : 'KaleaShop — Boutique gaming officielle';
   setActiveNav(ctx.path);
   if (typeof result === 'object' && typeof result.mount === 'function') {
     currentCleanup = result.mount(viewEl) ?? null;
@@ -143,7 +174,7 @@ async function show(path) {
   }
   const result = await fallback.view({ params: {}, query: new URLSearchParams(), path });
   viewEl.innerHTML = typeof result === 'string' ? result : result.html;
-  document.title = 'Page introuvable — KALEA';
+  document.title = 'Page introuvable — KaleaShop';
   setActiveNav('/404');
 }
 

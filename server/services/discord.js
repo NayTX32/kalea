@@ -134,6 +134,21 @@ export async function botRemoveRole(guildId, userId, roleId) {
   }
 }
 
+/**
+ * Membre du serveur via le bot (rôles Discord inclus).
+ * Retourne null quand le membre a quitté le serveur ; lève une erreur
+ * en cas d'échec réseau/token (le appelant décide alors de ne rien changer).
+ */
+export async function botGetGuildMember(guildId, userId) {
+  if (!config.discord.botConfigured || !guildId || !userId) return null;
+  try {
+    return await discordFetch(`${API}/guilds/${guildId}/members/${userId}`, { headers: botHeaders() });
+  } catch (error) {
+    if (error.status === 404) return null;
+    throw error;
+  }
+}
+
 /** Liste les rôles du serveur (dashboard admin : sélecteur de rôles). */
 export async function botListRoles() {
   if (!config.discord.botConfigured) return [];

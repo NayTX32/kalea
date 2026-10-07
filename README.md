@@ -1,9 +1,10 @@
-# 🛍️ KALEA — Boutique officielle du jeu
+# 🛍️ KaleaShop — Boutique gaming officielle (KALEA)
 
-Site complet **100 % français** : boutique de packs, paiements (PayPal / Stripe / démo),
-connexion **Discord OAuth2**, rôles automatiques, livraison automatique via API signée
-(HMAC), historique, FAQ, support et **dashboard d'administration** protégé par un
-mot de passe.
+Site complet **100 % français** : boutique de packs, **catégories**, **gestion de
+stock**, **codes promotionnels**, panier multi-articles, paiements (PayPal / Stripe /
+démo), connexion **Discord OAuth2**, rôles automatiques (rôle *Founder* →
+**Administrateur**), livraison automatique via API signée (HMAC), historique, FAQ,
+support et **dashboard d'administration** moderne protégé par un mot de passe.
 
 **Zéro dépendance externe** : aucune ligne `npm install`. Node.js suffit.
 
@@ -37,13 +38,18 @@ Commandes utiles :
 | `node server/index.js` | démarrer le serveur |
 | `node --watch server/index.js` | redémarrage automatique (dev) |
 | `node tools/smoke-test.js` | tests de bout en bout (36 vérifications) |
+| `node tools/test-roles.mjs` | rôles, permissions, portes admin (51 vérifications) |
+| `node tools/test-cart.mjs` | panier multi-articles, livraison, remboursement (26 vérifications) |
+| `node tools/test-catalog.mjs` | catégories, stock, promotions (44 vérifications) |
 | `node tools/mock-game-server.js` | serveur de jeu fictif (tests) |
 | `node server/scripts/seed.js` | (ré)initialiser les données |
 
 **Comptes créés au premier lancement :**
 
-- Administrateur : `admin@kalea.gg` / `KaleaAdmin2026!`
-- Porte d'accès `/admin` : mot de passe unique `kalea2K26Fn` (modifiable)
+- Compte administrateur initial (identifiant + mot de passe) et mot de passe de
+  la porte `/admin` : voir **`ACCES.md`** — fichier local, **jamais versionné**.
+- En production, `ADMIN_GATE_PASSWORD` est **obligatoire** : aucune valeur par
+  défaut n'est livrée avec le code (sinon `/admin` serait ouvert à tous).
 
 ---
 
@@ -63,14 +69,19 @@ exposé au navigateur** (le front ne reçoit que `/api/config`).
 | `PAYPAL_CLIENT_ID` / `PAYPAL_CLIENT_SECRET` | PayPal OAuth | pour PayPal |
 | `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | Stripe | pour Stripe |
 | `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` | **Discord OAuth2** (connexion) | pour Discord |
-| `DISCORD_REDIRECT_URI` | redirection exacte enregistrée chez Discord | ✅ Discord |
-| `DISCORD_BOT_TOKEN` / `DISCORD_GUILD_ID` | bot + attribution des rôles | pour rôles |
+| `DISCORD_REDIRECT_URI` / `DISCORD_CALLBACK_PORT` | redirection exacte chez Discord (`/callback`) | ✅ Discord |
+| `DISCORD_BOT_TOKEN` / `DISCORD_GUILD_ID` | bot + lecture des rôles du serveur | pour rôles |
+| `DISCORD_ROLE_FONDATEUR` | rôle *Founder* → **Administrateur** du site | pour rôles |
 | `DISCORD_ROLE_BASE` / `_FULLLOCKER` / `_MODER` | IDs des rôles à attribuer | pour rôles |
+| `TRUST_PROXY` | honore `X-Forwarded-For` (Render / reverse-proxy) | ✅ prod |
+| `ROLE_REVALIDATE_MS` | délai de revalidation du rôle Founder (5 min) | — |
 | `GAME_API_URL` / `GAME_API_SECRET` / `GAME_API_KEY` | API du jeu (livraison signée) | pour livraison |
-| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | compte administrateur | — |
-| `ADMIN_GATE_PASSWORD` | mot de passe de la porte `/admin` | — |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | compte administrateur initial (seed) | ✅ prod |
+| `ADMIN_GATE_PASSWORD` | mot de passe de la porte `/admin` | ✅ prod |
 
-> ⚠️ En production, le serveur **refuse de démarrer** sans `SESSION_SECRET`.
+> ⚠️ En production, le serveur **refuse de démarrer** sans `SESSION_SECRET`, et
+> **`ADMIN_GATE_PASSWORD` n'a aucune valeur par défaut** : laissé vide, la porte
+> `/admin` reste fermée (erreur explicite plutôt qu'un mot de passe public).
 
 ---
 
@@ -121,12 +132,15 @@ La base `data/kalea.db` reste sur le disque du VPS → **données durables**.
 Le dépôt contient un `render.yaml` : importez-le (Dashboard → *New → Blueprint*).
 Points de vigilance :
 
-1. Variables : `NODE_ENV=production`, `BASE_URL=https://votre-app.onrender.com`,
-   `SESSION_SECRET=<aléatoire>`, + Discord/PayPal.
-2. **Disque persistant requis** : *Disks → Add Disk*, monté sur `/data`
-   (sinon la base SQLite est effacée à chaque redéploiement).
-3. Discord : ajoutez `https://votre-app.onrender.com/api/auth/discord/callback`
-   dans *Developer Portal → OAuth2 → Redirects*.
+1. Variables : `NODE_ENV=production`, `BASE_URL=https://kaleashop.onrender.com`
+   (pré-rempli), `SESSION_SECRET=<aléatoire>` (généré), `ADMIN_GATE_PASSWORD`
+   (**obligatoire**), + `DISCORD_CLIENT_SECRET` / `DISCORD_BOT_TOKEN`.
+2. **Disque persistant** : le plan gratuit de Render le refuse → la base SQLite
+   est **réinitialisée à chaque redéploiement**. Passez sur un plan payant et
+   décommentez le bloc `disk:` de `render.yaml` (monté sur `/app/data`) si vous
+   voulez conserver comptes et commandes.
+3. Discord : ajoutez `https://kaleashop.onrender.com/callback`
+   dans *Developer Portal → OAuth2 → Redirects* (chemin exact, sans `/api/auth`).
 
 ### Option C — Railway / Fly.io / Neon (Node managé)
 
@@ -157,16 +171,24 @@ exécuter `server/index.js`.
 
 - [ ] `NODE_ENV=production`
 - [ ] `SESSION_SECRET` aléatoire (32+ octets)
-- [ ] `BASE_URL` = domaine public exact (https://…)
+- [ ] `TRUST_PROXY=1` (derrière Render / un reverse-proxy)
+- [ ] `BASE_URL` = domaine public exact (ex. `https://kaleashop.onrender.com`
+      ou votre domaine `https://kaleashop.…`)
+- [ ] `DISCORD_CALLBACK_PORT=0` (le `/callback` est servi par le même site)
 - [ ] **Discord** : `DISCORD_CLIENT_ID` + `DISCORD_CLIENT_SECRET` + redirection
-      `https://domaine/api/auth/discord/callback` déclarée chez Discord
-- [ ] **Discord** (rôles) : `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`, IDs de rôles
+      `https://kaleashop.onrender.com/callback` déclarée chez Discord
+- [ ] **Discord** (rôles) : `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`,
+      `DISCORD_ROLE_FONDATEUR` (rôle *Founder* du serveur Kalea)
 - [ ] **Paiement** : clés PayPal/Stripe (sinon le site reste en mode démo)
-- [ ] **Stripe** : webhook `https://domaine/api/webhooks/stripe`
-- [ ] **PayPal** : webhook `https://domaine/api/webhooks/paypal`
-- [ ] `ADMIN_GATE_PASSWORD` modifié (porte `/admin`)
-- [ ] Disque **persistant** pour `data/`
+- [ ] **Stripe** : webhook `https://kaleashop.onrender.com/api/webhooks/stripe`
+- [ ] **PayPal** : webhook `https://kaleashop.onrender.com/api/webhooks/paypal`
+- [ ] `ADMIN_GATE_PASSWORD` **renseigné** (obligatoire : aucune valeur par défaut
+      en production — laissé vide, la porte `/admin` reste fermée)
+- [ ] Disque **persistant** pour `data/` (indisponible sur le plan gratuit de
+      Render : la base est alors réinitialisée à chaque redéploiement)
 - [ ] `node tools/smoke-test.js` → 36/36 sur l'URL de production
+- [ ] `node tools/test-roles.mjs` → 51/51 · `node tools/test-cart.mjs` → 26/26
+      · `node tools/test-catalog.mjs` → 44/44
 
 ### Sauvegarde de la base
 
@@ -185,12 +207,14 @@ cp data/kalea.db backups/kalea-$(date +%F).db
 │   ├── db.js               # SQLite + schéma + migrations
 │   ├── routes/             # public, auth, boutique, commandes, admin, webhooks, jeu
 │   ├── middleware/         # session, CSRF, rate-limit, sécurité, rôles
-│   ├── services/           # paiements, Discord OAuth2 + rôles, API du jeu, seed
+│   ├── services/           # paiements, Discord OAuth2 + rôles, catégories,
+│   │                        # promotions, stock, commandes, API du jeu, seed
 │   └── lib/                # HTTP, erreurs, crypto HMAC, journal
 ├── public/                 # front SPA (HTML/CSS/JS, 100 % français)
 │   ├── index.html
 │   └── assets/{css,js,img,fonts}
-├── tools/                  # smoke-test, mock de jeu, fetch-fonts
+├── tools/                  # suites de tests (smoke, rôles, panier, catalogue),
+│                           # mock de jeu, fetch-fonts
 ├── data/kalea.db           # base SQLite (créée au 1er lancement)
 ├── .env / .env.example     # configuration (jamais versionné)
 ├── render.yaml / Dockerfile
